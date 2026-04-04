@@ -1,0 +1,29 @@
+[90m= [39m[34;4mIlluminate\Database\Eloquent\Collection[39;24m {#6952
+    [34mall[39m: [
+      [34;4mApp\Models\CartItem[39;24m {#6955
+        [34mid[39m: [35m1[39m,
+        [34mcart_id[39m: [35m1[39m,
+        [34mproduct_id[39m: [35m1[39m,
+        [34mquantity[39m: [35m2[39m,
+        [34mcreated_at[39m: "[32m2026-03-27 07:38:31[39m",
+        [34mupdated_at[39m: "[32m2026-03-31 05:00:27[39m",
+      },
+      [34;4mApp\Models\CartItem[39;24m {#6953
+        [34mid[39m: [35m2[39m,
+        [34mcart_id[39m: [35m1[39m,
+        [34mproduct_id[39m: [35m2[39m,
+        [34mquantity[39m: [35m2[39m,
+        [34mcreated_at[39m: "[32m2026-03-27 07:38:42[39m",
+        [34mupdated_at[39m: "[32m2026-03-31 05:00:27[39m",
+      },
+      [34;4mApp\Models\CartItem[39;24m {#6956
+        [34mid[39m: [35m3[39m,
+        [34mcart_id[39m: [35m1[39m,
+        [34mproduct_id[39m: [35m3[39m,
+        [34mquantity[39m: [35m2[39m,
+        [34mcreated_at[39m: "[32m2026-03-27 07:38:49[39m",
+        [34mupdated_at[39m: "[32m2026-03-31 05:00:27[39m",
+      },
+    ],
+  }
+

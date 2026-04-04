@@ -1,0 +1,25 @@
+[90m= [39m[34;4mIlluminate\Database\Eloquent\Collection[39;24m {#6927
+    [34mall[39m: [
+      [34;4mApp\Models\Product[39;24m {#6904
+        [34mid[39m: [35m3[39m,
+        [34mname[39m: "[32mI phone 17[39m",
+        [34mimage[39m: [36mnull[39m,
+      },
+      [34;4mApp\Models\Product[39;24m {#6939
+        [34mid[39m: [35m4[39m,
+        [34mname[39m: "[32mPaneer[39m",
+        [34mimage[39m: [36mnull[39m,
+      },
+      [34;4mApp\Models\Product[39;24m {#6940
+        [34mid[39m: [35m5[39m,
+        [34mname[39m: "[32mrice[39m",
+        [34mimage[39m: [36mnull[39m,
+      },
+      [34;4mApp\Models\Product[39;24m {#6941
+        [34mid[39m: [35m6[39m,
+        [34mname[39m: "[32miPhone 21[39m",
+        [34mimage[39m: [36mnull[39m,
+      },
+    ],
+  }
+

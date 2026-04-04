@@ -1,0 +1,12 @@
+[90m= [39m[34;4mApp\Models\Product[39;24m {#6913
+    [34mid[39m: [35m3[39m,
+    [34mname[39m: "[32mI phone 17[39m",
+    [34mdescription[39m: "[32mUnleash the future with the revolutionary iPhone 17. Experience power that truly lasts, keeping you connected longer than ever. Trust in uncompromised, industry-leading security, safeguarding your entire digital world with advanced protection. This isn't just an upgrade; it's total peace of mind, built for your dynamic life. Redefine mobile excellence today![39m",
+    [34mprice[39m: "[32m2650.00[39m",
+    [34mcost_price[39m: "[32m1590.00[39m",
+    [34mcategory_id[39m: [35m2[39m,
+    [34mcreated_at[39m: "[32m2026-03-20 09:21:53[39m",
+    [34mupdated_at[39m: "[32m2026-03-25 07:29:21[39m",
+    [34mimage[39m: "[32mproducts/iphone.avif[39m",
+  }
+

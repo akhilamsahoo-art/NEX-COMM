@@ -1,0 +1,104 @@
+<?php
+
+namespace App\Http\Controllers\API;
+
+use App\Http\Controllers\Controller;
+use App\Services\OrderService;
+use Illuminate\Http\Request;
+use App\Helpers\ApiResponse;
+use App\Models\Order;
+
+class OrderController extends Controller
+{
+    protected $orderService;
+
+    public function __construct(OrderService $orderService)
+    {
+        $this->orderService = $orderService;
+    }
+
+    public function index(Request $request)
+{
+    $user = $request->user();
+
+    if (in_array($user->role, ['super_admin', 'manager'])) {
+        // Admin roles → see all orders
+        $orders = $this->orderService->getAllOrders();
+    } else {
+        // Customer → only their orders
+        $orders = $this->orderService->getUserOrders($user->id);
+    }
+
+    return ApiResponse::success($orders, 'Orders fetched successfully');
+}
+
+public function store(Request $request)
+{
+    $user = $request->user();
+
+    if ($user->role !== 'customer') {
+        return ApiResponse::error('Only customers can place orders', 403);
+    }
+
+    $request->validate([
+        'items' => 'required|array',
+    ]);
+
+    return $this->orderService->createOrder(
+        $user->id,
+        $request->items
+    );
+}
+public function checkout(Request $request)
+{
+    $user = $request->user();
+
+    if ($user->role !== 'customer') {
+        return ApiResponse::error('Only customers can checkout', 403);
+    }
+
+    $request->validate([
+        'items' => 'required|array',
+        'items.*.cart_item_id' => 'required|exists:cart_items,id',
+        'items.*.quantity' => 'required|integer|min:1'
+    ]);
+
+    return $this->orderService->checkoutFromCart($user, $request->items);
+}
+
+    public function show(Request $request, $id)
+    {
+        $user = $request->user();
+    
+        $order = Order::with(['items.product', 'user'])
+            ->findOrFail($id);
+    
+        // 🔒 Restrict access
+        if ($user->role === 'customer' && $order->user_id !== $user->id) {
+            return ApiResponse::error('Unauthorized', 403);
+        }
+    
+        return ApiResponse::success($order, 'Order details fetched');
+    }
+    public function update(Request $request, $id)
+    {
+        $user = $request->user();
+    
+        // 🔒 Only admin roles can update order
+        if (!in_array($user->role, ['super_admin', 'manager'])) {
+            return ApiResponse::error('Unauthorized', 403);
+        }
+    
+        $request->validate([
+            'status' => 'required|string'
+        ]);
+    
+        $order = Order::findOrFail($id);
+    
+        $order->update([
+            'order_status' => $request->order_status
+        ]);
+    
+        return ApiResponse::success($order, 'Order status updated successfully');
+    }
+}

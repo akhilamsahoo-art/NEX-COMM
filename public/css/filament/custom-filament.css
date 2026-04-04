@@ -1,0 +1,15 @@
+/* LIGHT MODE SIDEBAR */
+.fi-sidebar {
+    background-color: #f8fafc !important; /* Very light gray */
+    border-right: 1px solid #e2e8f0;
+}
+
+/* DARK MODE SIDEBAR */
+.dark .fi-sidebar {
+    background-color: #0f172a !important; /* Deep Navy Blue */
+}
+
+/* Optional: Change the Sidebar Item hover color */
+.fi-sidebar-item-button:hover {
+    background-color: rgba(0, 0, 0, 0.05) !important;
+}
