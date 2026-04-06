@@ -17,27 +17,37 @@ class ProfitLossChart extends ChartWidget
 
     protected function getData(): array
     {
-        // Use Cache to stop the "buffering" lag. 
-        // We clear this automatically in Order.php when status changes to 'delivered'.
-        return Cache::remember('profit_loss_chart_data', now()->addMinutes(30), function () {
+        $user = auth()->user();
+
+        // ✅ Cache key is now unique to the user/tenant to prevent "zero-data" leakage between accounts
+        $cacheKey = 'profit_loss_chart_data_' . ($user->tenant_id ?? 'admin');
+
+        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($user) {
             $sixMonthsAgo = Carbon::now()->subMonths(5)->startOfMonth();
 
-            // Unified Query: Get Revenue and Cost in ONE go for better accuracy
-            $data = DB::table('orders')
-    ->join('order_items', 'orders.id', '=', 'order_items.order_id')
-    ->join('products', 'order_items.product_id', '=', 'products.id')
-    ->selectRaw('
-        DATE_FORMAT(orders.created_at, "%b") as month,
-        DATE_FORMAT(orders.created_at, "%Y-%m") as month_key,
-        SUM(order_items.quantity * order_items.price) as total_revenue,
-        SUM(order_items.quantity * products.cost_price) as total_cost
-    ')
-    ->where('orders.order_status', 'delivered')
-    ->where('orders.created_at', '>=', $sixMonthsAgo)
-    ->groupBy('month_key', 'month')
-    ->orderBy('month_key')
-    ->get()
-    ->keyBy('month');
+            $query = DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->join('products', 'order_items.product_id', '=', 'products.id')
+                ->selectRaw('
+                    DATE_FORMAT(orders.created_at, "%b") as month,
+                    DATE_FORMAT(orders.created_at, "%Y-%m") as month_key,
+                    SUM(order_items.quantity * order_items.price) as total_revenue,
+                    SUM(order_items.quantity * products.cost_price) as total_cost
+                ')
+                // ✅ FIX: Changed from 'delivered' to 'whereIn' so you see 'placed' orders too
+                ->whereIn('orders.order_status', ['placed', 'processing', 'shipped', 'delivered'])
+                ->where('orders.created_at', '>=', $sixMonthsAgo);
+
+            // ✅ Seller isolation: Only show products belonging to this seller
+            if ($user->role === 'seller') {
+                $query->where('products.tenant_id', $user->tenant_id);
+            }
+
+            $data = $query->groupBy('month_key', 'month')
+                ->orderBy('month_key')
+                ->get()
+                ->keyBy('month');
+
             $labels = [];
             $netProfitData = [];
             $totalCostData = [];
@@ -60,7 +70,7 @@ class ProfitLossChart extends ChartWidget
                     [
                         'label' => 'Net Profit',
                         'data' => $netProfitData,
-                        'borderColor' => '#10b981', // Green
+                        'borderColor' => '#10b981',
                         'backgroundColor' => 'rgba(16, 185, 129, 0.1)',
                         'fill' => 'start',
                         'tension' => 0.4,
@@ -68,7 +78,7 @@ class ProfitLossChart extends ChartWidget
                     [
                         'label' => 'Total Cost (COGS)',
                         'data' => $totalCostData,
-                        'borderColor' => '#ef4444', // Red
+                        'borderColor' => '#ef4444',
                         'backgroundColor' => 'rgba(239, 68, 68, 0.1)',
                         'tension' => 0.4,
                     ],

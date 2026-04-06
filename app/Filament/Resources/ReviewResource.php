@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ReviewResource\Pages;
 use App\Models\Review;
+use App\Models\User;
 use App\Jobs\AnalyzeReviewAi;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -59,39 +60,43 @@ class ReviewResource extends Resource
             ]);
     }
 
-    public static function getEloquentQuery(): Builder
-    {
-        $query = parent::getEloquentQuery();
-    
-        if (!auth()->check()) {
-            return $query;
-        }
-    
-        $user = auth()->user();
-    
-        if ($user->role === 'super_admin') {
-            return $query;
-        }
-    
-        return $query->where('tenant_id', $user->tenant_id);
+   public static function getEloquentQuery(): Builder
+{
+    $query = parent::getEloquentQuery();
+
+    if (!auth()->check()) {
+        return $query;
     }
+
+    $user = auth()->user();
+
+    // 1. Super Admins see everything
+    if ($user->role === User::ROLE_SUPER_ADMIN) {
+        return $query;
+    }
+
+    // 2. Everyone else (Sellers/Managers) only sees reviews for THEIR products
+    return $query->whereHas('product', function (Builder $q) use ($user) {
+        $q->where('tenant_id', $user->tenant_id);
+    });
+}
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
                 TextColumn::make('product.name')
-                    ->label('Product')
-                    ->sortable(),
+                    ->label('Product'),
+                    // ->sortable(),
 
                 TextColumn::make('user.name')
                     ->label('Customer')
-                    ->searchable()
-                    ->sortable(),
+                    ->searchable(),
+                    // ->sortable(),
 
                 TextColumn::make('rating')
                     ->badge()
-                    ->color('warning')
-                    ->sortable(),
+                    ->color('warning'),
+                    // ->sortable(),
 
                 // AI Sentiment Column
                 TextColumn::make('sentiment')

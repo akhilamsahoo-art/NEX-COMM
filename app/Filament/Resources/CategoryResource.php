@@ -4,6 +4,8 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CategoryResource\Pages;
 use App\Models\Category;
+
+use App\Models\User;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -19,15 +21,19 @@ class CategoryResource extends Resource
     protected static ?string $navigationGroup = 'Shop Management';
     protected static ?int $navigationSort = 1;
 
-    // ✅ NEW: Navigation control
+    // ✅ Navigation control (FIXED)
     public static function shouldRegisterNavigation(): bool
-{
-    if (!auth()->check()) {
-        return false;
-    }
+    {
+        if (!auth()->check()) {
+            return false;
+        }
 
-    return in_array(auth()->user()->role, ['admin', 'seller']);
-}
+        return in_array(auth()->user()->role, [
+            User::ROLE_SUPER_ADMIN,
+            User::ROLE_MANAGER, // ✅ IMPORTANT FIX
+            User::ROLE_SELLER,
+        ]);
+    }
 
     public static function form(Form $form): Form
     {
@@ -46,20 +52,23 @@ class CategoryResource extends Resource
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
 
-                // ✅ Optional: show tenant only for admin
-                Tables\Columns\TextColumn::make('tenant_id')
-                    ->label('Tenant')
-                    ->visible(fn () => in_array(auth()->user()->role, ['admin', 'super_admin']),
+                Tables\Columns\TextColumn::make('seller.name')
+                    ->label('Seller')
+                    ->visible(function () {
+    /** @var \App\Models\User $user */
+    $user = auth()->user();
+    return $user && $user->isSuperAdmin();
+}),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->toggleable(true, true),
 
                 Tables\Columns\TextColumn::make('updated_at')
                     ->dateTime()
                     ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true))
+                    ->toggleable(true, true),
             ])
             ->filters([
                 //
@@ -67,19 +76,24 @@ class CategoryResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
 
-                // ✅ Optional safety: seller cannot delete
                 Tables\Actions\DeleteAction::make()
-                ->visible(fn () => in_array(auth()->user()->role, ['super_admin', 'manager']))
+                    ->visible(fn () => in_array(auth()->user()->role, [
+                        User::ROLE_SUPER_ADMIN,
+                        User::ROLE_MANAGER
+                    ])),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make()
-                    ->visible(fn () => in_array(auth()->user()->role, ['super_admin', 'manager'])),
+                        ->visible(fn () => in_array(auth()->user()->role, [
+                            User::ROLE_SUPER_ADMIN,
+                            User::ROLE_MANAGER
+                        ])),
                 ]),
             ]);
     }
 
-    // ✅ FINAL TENANT FILTER
+    // ✅ Query (unchanged logic, just cleaner)
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();
@@ -90,16 +104,20 @@ class CategoryResource extends Resource
 
         $user = auth()->user();
 
-        // Admin sees all
-        if ($user->role === 'admin') {
-            return $query;
-        }
+        // if ($user->isSuperAdmin()) {
+        //     return $query;
+        // }
 
-        // Seller sees only their categories
+        /** @var \App\Models\User $user */
+$user = auth()->user();
+
+if ($user->isSuperAdmin()) {
+    return $query;
+}
+
         return $query->where('tenant_id', $user->tenant_id);
     }
 
-    // ✅ AUTO ASSIGN TENANT
     public static function mutateFormDataBeforeCreate(array $data): array
     {
         if (auth()->check()) {
@@ -109,20 +127,33 @@ class CategoryResource extends Resource
         return $data;
     }
 
-    public static function mutateFormDataBeforeSave(array $data): array
-    {
-        if (auth()->check() && auth()->user()->role === 'seller') {
-            $data['tenant_id'] = auth()->user()->tenant_id;
-        }
+    // public static function mutateFormDataBeforeSave(array $data): array
+    // {
+    //     if (auth()->check() && auth()->user()->isSeller()) {
+    //         $data['tenant_id'] = auth()->user()->tenant_id;
+    //     }
 
+    //     return $data;
+    // }
+    public static function mutateFormDataBeforeSave(array $data): array
+{
+    if (!auth()->check()) {
         return $data;
     }
 
+    /** @var \App\Models\User $user */
+    $user = auth()->user();
+
+    if ($user->isSeller()) {
+        $data['tenant_id'] = $user->tenant_id;
+    }
+
+    return $data;
+}
+
     public static function getRelations(): array
     {
-        return [
-            //
-        ];
+        return [];
     }
 
     public static function getPages(): array

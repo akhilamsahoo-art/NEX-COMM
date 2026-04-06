@@ -42,64 +42,45 @@ class StatsOverview extends BaseWidget
 protected function getStats(): array
 {
     $user = auth()->user();
-    $tenantId = $user->tenant_id;
-
-    // Base queries
+    
     $orderQuery = Order::query();
     $userQuery = User::query();
 
-    // Apply tenant filter ONLY if tenant exists
-    if ($tenantId) {
-        $orderQuery->where('tenant_id', $tenantId);
-        $userQuery->where('tenant_id', $tenantId);
-    }
+    if ($user->role === 'seller') {
+        $orderQuery->whereHas('items.product', function ($q) use ($user) {
+            $q->where('tenant_id', $user->tenant_id);
+        });
+        
+        $userQuery->whereHas('orders.items.product', function ($q) use ($user) {
+            $q->where('tenant_id', $user->tenant_id);
+        });
+    } 
 
-    // 1. Total Sales (Delivered only)
-    $totalSales = (clone $orderQuery)
-    ->where('payment_status', 'paid')
-    ->sum('total_amount');
-
-    // 2. Total Orders
-    $totalOrders = (clone $orderQuery)->count();
-
-    // 3. Total Users (excluding 1 admin)
-    $rawUserCount = (clone $userQuery)->count();
-    $displayUserCount = max($rawUserCount - 1, 0);
-
-    if ($displayUserCount > 0) {
-        $userDescription = 'Registered customers';
-        $userColor = 'primary';
-        $userIcon = 'heroicon-m-users';
-    } else {
-        $userDescription = 'Waiting for first customer';
-        $userColor = 'gray';
-        $userIcon = 'heroicon-m-user-minus';
-    }
+    $totalSales = (clone $orderQuery)->where('payment_status', 'paid')->sum('total_amount');
+    $totalOrders = (clone $orderQuery)->where('order_status', '!=', 'in_cart')->count();
+    $displayUserCount = (clone $userQuery)->distinct()->count();
 
     return [
-        // Total Sales
+        // 💰 Total Sales - Success Green with Trending Up icon
         Stat::make('Total Sales', $this->animateNumber($totalSales, '$'))
-            ->description($totalSales > 0 ? 'Revenue is growing' : 'Awaiting first sale')
-            ->descriptionIcon($totalSales > 0 ? 'heroicon-m-arrow-trending-up' : null)
-            ->chart($totalSales > 0 ? [7, 3, 10, 2, 12, 4, 15] : [0, 0, 0])
-            ->color($totalSales > 0 ? 'success' : 'gray')
-            ->url(OrderResource::getUrl('index')),
+            ->description($totalSales > 0 ? 'Total revenue generated' : 'Awaiting first payment')
+            ->descriptionIcon($totalSales > 0 ? 'heroicon-m-arrow-trending-up' : 'heroicon-m-minus')
+            ->chart($totalSales > 0 ? [7, 3, 10, 2, 12, 4, 18] : [0, 0, 0]) // Sparkline chart
+            ->color($totalSales > 0 ? 'success' : 'gray'),
 
-        // Total Orders
+        // 📦 Total Orders - Info Blue with Shopping Cart icon
         Stat::make('Total Orders', $this->animateNumber($totalOrders))
-            ->description('Total transactions')
-            ->descriptionIcon('heroicon-m-shopping-cart')
-            ->chart($totalOrders > 0 ? [15, 4, 10, 2, 12, 4, 7] : [0, 0, 0])
-            ->color($totalOrders > 0 ? 'info' : 'gray')
-            ->url(OrderResource::getUrl('index')),
+            ->description('Transactions excluding carts')
+            ->descriptionIcon('heroicon-m-shopping-bag')
+            ->chart($totalOrders > 0 ? [3, 5, 2, 8, 4, 10, 7] : [0, 0, 0])
+            ->color($totalOrders > 0 ? 'info' : 'gray'),
 
-        // Customers
-        Stat::make('Customers', $this->animateNumber($displayUserCount))
-            ->description($userDescription)
-            ->descriptionIcon($userIcon)
-            ->chart($displayUserCount > 0 ? [1, 5, 2, 10, 3, 12, 8] : [0, 0, 0])
-            ->color($displayUserCount > 0 ? 'primary' : 'gray')
-            ->url(UserResource::getUrl('index')),
+        // 👥 Customers - Primary Indigo with Users icon
+        Stat::make('Unique Customers', $this->animateNumber($displayUserCount))
+            ->description($displayUserCount > 0 ? 'Customer base reached' : 'Waiting for buyers')
+            ->descriptionIcon('heroicon-m-users')
+            ->chart($displayUserCount > 0 ? [1, 2, 4, 3, 6, 8, 12] : [0, 0, 0])
+            ->color($displayUserCount > 0 ? 'primary' : 'gray'),
     ];
 }
 }

@@ -43,50 +43,50 @@ class ListOrders extends ListRecords
     public function getTabs(): array
 {
     return [
-        'all' => Tab::make('All Orders'),
+        // 'all' => Tab::make('All Orders'),
 
-        // In Cart tab
-        'in_cart' => Tab::make('In Cart')
-            ->icon('heroicon-m-shopping-cart'),
+        // // In Cart tab
+        // 'in_cart' => Tab::make('In Cart')
+        //     ->icon('heroicon-m-shopping-cart'),
 
-        // Order lifecycle tabs (based on order_status)
-        'placed' => Tab::make('Placed')
-            ->modifyQueryUsing(fn (Builder $query) => 
-                $query->where('order_status', 'placed')
-            )
-            ->icon('heroicon-m-clock'),
+        // // Order lifecycle tabs (based on order_status)
+        // 'placed' => Tab::make('Placed')
+        //     ->modifyQueryUsing(fn (Builder $query) => 
+        //         $query->where('order_status', 'placed')
+        //     )
+        //     ->icon('heroicon-m-clock'),
 
-        'processing' => Tab::make('Processing')
-            ->modifyQueryUsing(fn (Builder $query) => 
-                $query->where('order_status', 'processing')
-            )
-            ->icon('heroicon-m-arrow-path'),
+        // 'processing' => Tab::make('Processing')
+        //     ->modifyQueryUsing(fn (Builder $query) => 
+        //         $query->where('order_status', 'processing')
+        //     )
+        //     ->icon('heroicon-m-arrow-path'),
 
-        'shipped' => Tab::make('Shipped')
-            ->modifyQueryUsing(fn (Builder $query) => 
-                $query->where('order_status', 'shipped')
-            )
-            ->icon('heroicon-m-truck'),
+        // 'shipped' => Tab::make('Shipped')
+        //     ->modifyQueryUsing(fn (Builder $query) => 
+        //         $query->where('order_status', 'shipped')
+        //     )
+        //     ->icon('heroicon-m-truck'),
 
-        'delivered' => Tab::make('Delivered')
-            ->modifyQueryUsing(fn (Builder $query) => 
-                $query->where('order_status', 'delivered')
-            )
-            ->icon('heroicon-m-check-badge'),
+        // 'delivered' => Tab::make('Delivered')
+        //     ->modifyQueryUsing(fn (Builder $query) => 
+        //         $query->where('order_status', 'delivered')
+        //     )
+        //     ->icon('heroicon-m-check-badge'),
 
-        'cancelled' => Tab::make('Cancelled')
-            ->modifyQueryUsing(fn (Builder $query) => 
-                $query->where('order_status', 'cancelled')
-            )
-            ->icon('heroicon-m-x-circle'),
+        // 'cancelled' => Tab::make('Cancelled')
+        //     ->modifyQueryUsing(fn (Builder $query) => 
+        //         $query->where('order_status', 'cancelled')
+        //     )
+        //     ->icon('heroicon-m-x-circle'),
     ];
 }
-    public function updatedActiveTab(): void
-    {
-        if ($this->activeTab === 'in_cart') {
-            $this->redirect(route('filament.admin.resources.carts.index'), navigate: true);
-        }
-    }
+    // public function updatedActiveTab(): void
+    // {
+    //     if ($this->activeTab === 'in_cart') {
+    //         $this->redirect(route('filament.admin.resources.carts.index'), navigate: true);
+    //     }
+    // }
 
     /**
      * Header widgets (optional)

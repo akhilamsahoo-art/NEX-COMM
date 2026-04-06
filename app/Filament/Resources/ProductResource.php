@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
+use App\Models\User;
 use App\Models\Product;
 use App\Services\AiFoundationService;
 use Filament\Forms;
@@ -29,16 +30,20 @@ class ProductResource extends Resource
     protected static ?int $navigationSort = 1;
 
     // ✅ NEW (navigation control)
-    public static function shouldRegisterNavigation(): bool
-    {
-        $user = auth()->user();
-    
-        if (!$user) {
-            return false;
-        }
-    
-        return in_array($user->role, ['admin', 'seller']);
+   public static function shouldRegisterNavigation(): bool
+{
+    $user = auth()->user();
+
+    if (!$user) {
+        return false;
     }
+
+    return in_array($user->role, [
+        User::ROLE_SUPER_ADMIN,
+        User::ROLE_MANAGER,
+        User::ROLE_SELLER
+    ]);
+}   
     public static function form(Form $form): Form
     {
         return $form
@@ -48,7 +53,7 @@ class ProductResource extends Resource
                         TextInput::make('name')
                             ->required()
                             ->maxLength(191)
-                            ->live(onBlur: true),
+                            ->live(true),
 
                         TextInput::make('price')
                             ->required()
@@ -59,11 +64,16 @@ class ProductResource extends Resource
                         Select::make('category_id')
                             ->label('Category')
                             ->relationship(
-                                name: 'category',
-                                titleAttribute: 'name',
-                                modifyQueryUsing: fn ($query) =>
-                                    $query->where('tenant_id', auth()->user()->tenant_id)
-                            )
+    'category',
+    'name',
+    function ($query) {
+        $user = auth()->user();
+
+        if ($user && $user->role !== User::ROLE_SUPER_ADMIN) {
+            $query->where('tenant_id', $user->tenant_id);
+        }
+    }
+)
                             ->preload()
                             ->searchable()
                             ->required()
@@ -188,27 +198,38 @@ class ProductResource extends Resource
                 ->checkFileExistence(false),
 
             TextColumn::make('name')
-                ->searchable()
-                ->sortable(),
+                ->searchable(),
+                // ->sortable(),
 
             TextColumn::make('price')
-                ->money('USD')
-                ->sortable(),
+                ->money('USD'),
+                // ->sortable(),
 
             TextColumn::make('category.name')
                 ->label('Category')
-                ->badge()
-                ->sortable(),
+                ->badge(),
+                // ->sortable(),
 
             // ✅ FIXED
-            TextColumn::make('tenant_id')
-                ->label('Tenant')
-                ->visible(fn () => in_array(auth()->user()->role, ['super_admin', 'manager'])),
+        //    TextColumn::make('seller.name')
+        //         ->label('Seller')
+        //         ->searchable()
+        //         ->sortable()
+        //         ->visible(fn () => auth()->user()->role === 'admin'),
+        TextColumn::make('seller.name')
+    ->label('Seller')
+    ->searchable()
+    // ->sortable()
+    ->visible(function () {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+        return $user && $user->isSuperAdmin();
+    }),
 
             TextColumn::make('created_at')
                 ->dateTime()
-                ->sortable()
-                ->toggleable(isToggledHiddenByDefault: true),
+                // ->sortable()
+                ->toggleable(true, true),
         ])
 
         ->defaultPaginationPageOption(10)
@@ -234,35 +255,43 @@ class ProductResource extends Resource
             Tables\Actions\EditAction::make(),
 
             // ✅ FIXED
-            Tables\Actions\DeleteAction::make()
-            ->visible(fn () => in_array(auth()->user()->role, ['super_admin', 'manager'])),
+           Tables\Actions\DeleteAction::make()
+    ->visible(fn () => in_array(auth()->user()->role, [
+        User::ROLE_SUPER_ADMIN,
+        User::ROLE_MANAGER
+    ]))
         ])
 
         ->bulkActions([
             Tables\Actions\BulkActionGroup::make([
-                Tables\Actions\DeleteBulkAction::make()
-                ->visible(fn () => in_array(auth()->user()->role, ['super_admin', 'manager'])),
+               Tables\Actions\DeleteBulkAction::make()
+    ->visible(fn () => in_array(auth()->user()->role, [
+        User::ROLE_SUPER_ADMIN,
+        User::ROLE_MANAGER
+    ]))
             ]),
         ]);
 }
 
     // ✅ FINAL TENANT FILTER (clean + safe)
     public static function getEloquentQuery(): Builder
-    {
-        $query = parent::getEloquentQuery()->with(['category']);
+{
+    $query = parent::getEloquentQuery()->with(['category']);
 
-        if (!auth()->check()) {
-            return $query;
-        }
-
-        $user = auth()->user();
-
-        if ($user->role === 'admin') {
-            return $query;
-        }
-
-        return $query->where('tenant_id', $user->tenant_id);
+    if (!auth()->check()) {
+        return $query;
     }
+
+    /** @var \App\Models\User $user */
+    $user = auth()->user();
+
+    // ✅ FIXED: return query, not boolean
+    if ($user->isSuperAdmin()) {
+        return $query;
+    }
+
+    return $query->where('tenant_id', $user->tenant_id);
+}
 
     // ✅ AUTO TENANT ASSIGN
     public static function mutateFormDataBeforeCreate(array $data): array
@@ -275,13 +304,20 @@ class ProductResource extends Resource
     }
 
     public static function mutateFormDataBeforeSave(array $data): array
-    {
-        if (auth()->check() && auth()->user()->role !== 'admin') {
-            $data['tenant_id'] = auth()->user()->tenant_id;
-        }
-
+{
+    if (!auth()->check()) {
         return $data;
     }
+
+    /** @var \App\Models\User $user */
+    $user = auth()->user();
+
+    if (!$user->isSuperAdmin()) {
+        $data['tenant_id'] = $user->tenant_id;
+    }
+
+    return $data;
+}
 
     public static function getPages(): array
     {

@@ -34,18 +34,18 @@ class Review extends Model
     {
         return $this->belongsTo(User::class);
     }
-    protected static function booted()
-{
-    static::creating(function ($model) {
-        if (auth()->check()) {
-            $model->tenant_id = auth()->user()->tenant_id;
-        }
-    });
+//     protected static function booted()
+// {
+//     static::creating(function ($model) {
+//         if (auth()->check()) {
+//             $model->tenant_id = auth()->user()->tenant_id;
+//         }
+//     });
 
-    static::addGlobalScope('tenant', function ($query) {
-        if (auth()->check() && auth()->user()->tenant_id && !auth()->user()->isSuperAdmin()) {
-            $query->where('tenant_id', auth()->user()->tenant_id);
-        }
-    });
-}
+    // static::addGlobalScope('tenant', function ($query) {
+    //     if (auth()->check() && auth()->user()->tenant_id && !auth()->user()->isSuperAdmin()) {
+    //         $query->where('tenant_id', auth()->user()->tenant_id);
+    //     }
+    // });
+// }
 }

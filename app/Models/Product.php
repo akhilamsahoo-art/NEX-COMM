@@ -52,6 +52,10 @@ class Product extends Model
     {
         return $this->belongsTo(Tenant::class);
     }
+    public function seller()
+{
+    return $this->belongsTo(\App\Models\User::class, 'tenant_id');
+}
 
     // Global scope for tenant
     protected static function booted()

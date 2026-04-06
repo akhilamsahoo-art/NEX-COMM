@@ -10,6 +10,8 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Filament\Tables\Enums\FiltersLayout;
+use Filament\Tables\Actions\Action;
 
 class OrderResource extends Resource
 {
@@ -24,175 +26,176 @@ class OrderResource extends Resource
 
     public static function form(Form $form): Form
     {
+    
         return $form->schema([
-            Forms\Components\Group::make()->schema([
-
-                // Main Information
-                Forms\Components\Section::make('Main Information')->schema([
-                    Forms\Components\Select::make('user_id')
-                        ->relationship('user', 'name')
-                        ->label('Customer')
-                        ->disabled(fn () => auth()->user()->role === 'seller')
-                        ->required(),
-
-                    Forms\Components\Textarea::make('notes')
-                        ->columnSpanFull(),
-                ])->columns(2),
-
-                // Order Items
-                Forms\Components\Section::make('Order Items')->schema([
-                    Forms\Components\Repeater::make('items')
-                        ->relationship('items')
+            // This main grid splits the screen into a 2-column wide left side and 1-column wide right side
+            Forms\Components\Grid::make(3)
+                ->schema([
+                    
+                    // LEFT SIDE: Main info and items (Spans 2 columns)
+                    Forms\Components\Group::make()
                         ->schema([
-                            Forms\Components\Placeholder::make('product_image')
-                                ->label('Image')
-                                ->content(function ($record) {
-                                    if (!$record || !$record->product || !$record->product->image) {
-                                        return 'No Image';
-                                    }
+                            // Main Information
+                            Forms\Components\Section::make('Main Information')->schema([
+                                Forms\Components\Select::make('user_id')
+                                    ->relationship('user', 'name')
+                                    ->label('Customer')
+                                    ->disabled(fn () => auth()->user()->role === 'seller')
+                                    ->required(),
 
-                                    return new \Illuminate\Support\HtmlString(
-                                        '<img src="' . asset('storage/' . $record->product->image) . '" 
-                                        style="width:50px;height:50px;border-radius:8px;object-fit:cover;" />'
-                                    );
-                                }),
+                                Forms\Components\Textarea::make('notes')
+                                    ->columnSpanFull(),
+                            ])->columns(2),
 
-                            Forms\Components\Select::make('product_id')
-                                ->relationship('product', 'name')
-                                ->label('Product')
-                                ->disabled(),
+                            // Order Items
+                            Forms\Components\Section::make('Order Items')->schema([
+                                Forms\Components\Repeater::make('items')
+                                    ->relationship('items')
+                                    ->schema([
+                                        Forms\Components\Placeholder::make('product_image')
+                                            ->label('Image')
+                                            ->content(function ($record) {
+                                                if (!$record || !$record->product || !$record->product->image) {
+                                                    return 'No Image';
+                                                }
 
-                            Forms\Components\TextInput::make('quantity')
-                                ->numeric()
-                                ->disabled(),
+                                                return new \Illuminate\Support\HtmlString(
+                                                    '<img src="' . asset('storage/' . $record->product->image) . '" 
+                                                    style="width:50px;height:50px;border-radius:8px;object-fit:cover;" />'
+                                                );
+                                            }),
 
-                            Forms\Components\TextInput::make('price')
-                                ->label('Unit Price')
-                                ->numeric()
-                                ->prefix('$')
-                                ->readOnly()
-                                ->dehydrated()
-                                ->afterStateHydrated(function ($component, $state, $record) {
-                                    if ($record) {
-                                        $component->state($record->price);
-                                    }
-                                }),
+                                        Forms\Components\Select::make('product_id')
+                                            ->relationship('product', 'name')
+                                            ->label('Product')
+                                            ->disabled(),
+
+                                        Forms\Components\TextInput::make('quantity')
+                                            ->numeric()
+                                            ->disabled(),
+
+                                        Forms\Components\TextInput::make('price')
+                                            ->label('Unit Price')
+                                            ->numeric()
+                                            ->prefix('$')
+                                            ->readOnly()
+                                            ->dehydrated()
+                                            ->afterStateHydrated(function ($component, $state, $record) {
+                                                if ($record) {
+                                                    $component->state($record->price);
+                                                }
+                                            }),
+                                    ])
+                                    ->columns(4)
+                                    ->addable(false)
+                                    ->deletable(false)
+                                    ->reorderable(false),
+                            ]),
                         ])
-                        ->columns(4)
-                        ->addable(false)
-                        ->deletable(false)
-                        ->reorderable(false),
+                        ->columnSpan(['lg' => 2]),
+
+                    // RIGHT SIDE: Workflow and Totals (Spans 1 column)
+                    Forms\Components\Group::make()
+                        ->schema([
+                            // Workflow
+                            Forms\Components\Section::make('Order Workflow')->schema([
+                                // ✅ SELLER DROPDOWN
+                                Forms\Components\Select::make('order_status')
+                                    ->label('Order Status')
+                                    ->options([
+                                        'in_cart' => 'In Cart',
+                                        'placed' => 'Order Placed',
+                                        'cancelled' => 'Cancelled',
+                                    ])
+                                    ->visible(fn () => auth()->user()->role === 'seller')
+                                    ->required()
+                                    ->disableOptionWhen(function ($value, $record) {
+                                        if (!$record) return false;
+                                        $stages = ['in_cart' => 1, 'placed' => 2, 'cancelled' => 3];
+                                        return $stages[$value] < $stages[$record->order_status];
+                                    }),
+
+                                // ✅ ADMIN TEXT VIEW
+                                Forms\Components\TextInput::make('order_status')
+                                    ->label('Order Status')
+                                    ->disabled()
+                                    ->visible(fn () => auth()->user()->role !== 'seller'),
+
+                                // ---------------- PAYMENT ----------------
+                                Forms\Components\Select::make('payment_status')
+                                    ->label('Payment Status')
+                                    ->options([
+                                        'pending' => 'Pending',
+                                        'cash_on_delivery' => 'Cash on Delivery',
+                                        'online_payment' => 'Online Payment',
+                                        'card_payment' => 'Pay with Card',
+                                        'paid' => 'Paid',
+                                        'failed' => 'Failed',
+                                    ])
+                                    ->visible(fn () => auth()->user()->role === 'seller')
+                                    ->required()
+                                    ->disabled(fn ($record) =>
+                                        !$record || !in_array($record->order_status, ['order_placed'])
+                                    )
+                                    ->disableOptionWhen(function ($value, $record) {
+                                        if (!$record) return false;
+                                        $stages = ['pending' => 1, 'cash_on_delivery' => 2, 'online_payment' => 3, 'card_payment' => 4, 'paid' => 5, 'failed' => 6];
+                                        return $stages[$value] < $stages[$record->payment_status];
+                                    }),
+
+                                Forms\Components\TextInput::make('payment_status')
+                                    ->label('Payment Status')
+                                    ->disabled()
+                                    ->visible(fn () => auth()->user()->role !== 'seller'),
+
+                                // ---------------- SHIPMENT ----------------
+                                Forms\Components\Select::make('shipment_status')
+                                    ->label('Shipment Status')
+                                    ->options([
+                                        'pending' => 'Pending',
+                                        'processing' => 'Processing',
+                                        'shipped' => 'Shipped',
+                                        'delivered' => 'Delivered',
+                                        'cancelled' => 'Cancelled',
+                                    ])
+                                    ->visible(fn () => auth()->user()->role === 'seller')
+                                    ->required()
+                                    ->disabled(fn ($record) =>
+                                        !$record || !in_array($record->payment_status, ['paid', 'cash_on_delivery', 'card_payment'])
+                                    )
+                                    ->disableOptionWhen(function ($value, $record) {
+                                        if (!$record) return false;
+                                        $stages = ['pending' => 1, 'processing' => 2, 'shipped' => 3, 'delivered' => 4, 'cancelled' => 5];
+                                        return $stages[$value] < $stages[$record->shipment_status];
+                                    }),
+
+                                Forms\Components\TextInput::make('shipment_status')
+                                    ->label('Shipment Status')
+                                    ->disabled()
+                                    ->visible(fn () => auth()->user()->role !== 'seller'),
+                            ]),
+
+                            // Pricing
+                            Forms\Components\Section::make('Pricing Summary')->schema([
+                                Forms\Components\TextInput::make('total_amount')
+                                    ->label('Grand Total')
+                                    ->numeric()
+                                    ->readOnly()
+                                    ->prefix('$'),
+
+                                Forms\Components\Placeholder::make('seller_total')
+                                    ->label('Your Earnings')
+                                    ->content(function ($record) {
+                                        if (auth()->check() && auth()->user()->role === 'seller') return '-';
+                                        return $record->items
+                                            ->where('product.tenant_id', auth()->user()->tenant_id)
+                                            ->sum(fn ($item) => $item->price * $item->quantity);
+                                    })
+                                    ->visible(fn () => auth()->check() && auth()->user()->role === 'seller'),
+                            ]),
+                        ])
+                        ->columnSpan(['lg' => 1]),
                 ]),
-
-                // Workflow
-                Forms\Components\Section::make('Order Workflow')->schema([
-
-                    Forms\Components\Select::make('order_status')
-                        ->label('Order Status')
-                        ->options([
-                            'in_cart' => 'In Cart',
-                            'order_placed' => 'Order Placed',
-                            'cancelled' => 'Cancelled',
-                        ])
-                        ->required()
-                        ->disabled(fn () => auth()->user()->role === 'seller')
-                        ->disableOptionWhen(function ($value, $record) {
-                            if (!$record) return false;
-
-                            $stages = [
-                                'in_cart' => 1,
-                                'order_placed' => 2,
-                                'cancelled' => 3
-                            ];
-
-                            return $stages[$value] < $stages[$record->order_status];
-                        }),
-
-                    Forms\Components\Select::make('payment_status')
-                        ->label('Payment Status')
-                        ->options([
-                            'pending' => 'Pending',
-                            'cash_on_delivery' => 'Cash on Delivery',
-                            'online_payment' => 'Online Payment',
-                            'card_payment' => 'Pay with Card',
-                            'paid' => 'Paid',
-                            'failed' => 'Failed',
-                        ])
-                        ->required()
-                        ->disabled(fn ($record) =>
-                            auth()->user()->role === 'seller'
-                            || !$record
-                            || !in_array($record->order_status, ['order_placed'])
-                        )
-                        ->disableOptionWhen(function ($value, $record) {
-                            if (!$record) return false;
-
-                            $stages = [
-                                'pending' => 1,
-                                'cash_on_delivery' => 2,
-                                'online_payment' => 3,
-                                'card_payment' => 4,
-                                'paid' => 5,
-                                'failed' => 6,
-                            ];
-
-                            return $stages[$value] < $stages[$record->payment_status];
-                        }),
-
-                    Forms\Components\Select::make('shipment_status')
-                        ->label('Shipment Status')
-                        ->options([
-                            'pending' => 'Pending',
-                            'processed' => 'Processed',
-                            'shipped' => 'Shipped',
-                            'delivered' => 'Delivered',
-                            'cancelled' => 'Cancelled',
-                        ])
-                        ->required()
-                        ->disabled(fn ($record) =>
-                        auth()->check() && auth()->user()->role === 'seller'
-                            || !$record
-                            || !in_array($record->payment_status, ['paid', 'cash_on_delivery', 'card_payment'])
-                        )
-                        ->disableOptionWhen(function ($value, $record) {
-                            if (!$record) return false;
-
-                            $stages = [
-                                'pending' => 1,
-                                'processed' => 2,
-                                'shipped' => 3,
-                                'delivered' => 4,
-                                'cancelled' => 5,
-                            ];
-
-                            return $stages[$value] < $stages[$record->shipment_status];
-                        }),
-
-                ]),
-
-                // Pricing
-                Forms\Components\Section::make('Pricing Summary')->schema([
-
-                    Forms\Components\TextInput::make('total_amount')
-                        ->label('Grand Total')
-                        ->numeric()
-                        ->readOnly()
-                        ->prefix('$'),
-
-                    Forms\Components\Placeholder::make('seller_total')
-                        ->label('Your Earnings')
-                        ->content(function ($record) {
-                            if (auth()->check() && auth()->user()->role === 'seller') return '-';
-
-                            return $record->items
-                                ->where('product.tenant_id', auth()->user()->tenant_id)
-                                ->sum(fn ($item) => $item->price * $item->quantity);
-                        })
-                        ->visible(fn () => auth()->check() && auth()->user()->role === 'seller'),
-
-                ]),
-
-            ])->columns(3)
         ]);
     }
 
@@ -221,34 +224,75 @@ class OrderResource extends Resource
                     ->dateTime('M d, Y'),
             ])
 
-            ->filters([])
-
-            ->actions([
-                Tables\Actions\EditAction::make()
+            ->filters([
+            // ✅ This adds the dropdown inside the filter/search area
+            Tables\Filters\SelectFilter::make('order_status')
+                ->label('Order Status')
+                ->options([
+                    'in_cart' => 'In Cart',
+                    'placed' => 'Placed',
+                    'processing' => 'Processing',
+                    'shipped' => 'Shipped',
+                    'delivered' => 'Delivered',
+                    'cancelled' => 'Cancelled',
+                ]),
+            
+            // Optional: You can also add a filter for Shipment or Payment status here
+        ])
+        ->filtersLayout(FiltersLayout::Dropdown)
+        ->filtersTriggerAction(
+            fn (Action $action) => $action
+                ->button()
+                ->label('Filter'),
+        
+        )
+        ->defaultSort('created_at', 'desc')
+        ->actions([
+            Tables\Actions\ViewAction::make()
                 ->visible(fn () => in_array(auth()->user()->role, ['super_admin', 'manager'])),
-            ])
+            Tables\Actions\EditAction::make()
+                ->visible(fn () => auth()->user()->role === 'seller'),
+        ])
+        ->bulkActions([])
+
+//             ->actions([
+//     Tables\Actions\ViewAction::make()
+//         ->visible(fn () => in_array(auth()->user()->role, ['super_admin', 'manager'])),
+
+//     Tables\Actions\EditAction::make()
+//         ->visible(fn () => auth()->user()->role === 'seller'),
+// ])
 
             ->bulkActions([]);
     }
 
+
     public static function getEloquentQuery(): Builder
-    {
-        $query = parent::getEloquentQuery()->with(['user', 'items.product']);
+{
+    // 1. Basic query with relationships
+    $query = parent::getEloquentQuery()->with(['user', 'items.product']);
 
-        if (!auth()->check()) {
-            return $query;
-        }
-
-        $user = auth()->user();
-
-        if ($user->role === 'seller') {
-            $query->whereHas('items.product', function ($q) use ($user) {
-                $q->where('tenant_id', $user->tenant_id);
-            });
-        }
-
+    if (!auth()->check()) {
         return $query;
     }
+
+    $user = auth()->user();
+
+    // 2. Logic for SELLERS
+    if ($user->role === 'seller') {
+        return $query
+            // ✅ HIDE 'in_cart' status from Sellers
+            ->where('order_status', '!=', 'in_cart') 
+            // Keep your existing tenant isolation
+            ->whereHas('items.product', function ($q) use ($user) {
+                $q->where('tenant_id', $user->tenant_id);
+            });
+    }
+
+    // 3. Logic for ADMIN / MANAGER
+    // We don't add any 'where' clauses here, so they see EVERYTHING (including 'in_cart')
+    return $query;
+}
 
     public static function canCreate(): bool
     {
@@ -259,6 +303,7 @@ class OrderResource extends Resource
     {
         return [
             'index' => Pages\ListOrders::route('/'),
+            'view' => Pages\ViewOrder::route('/{record}'),
             'edit' => Pages\EditOrder::route('/{record}/edit'),
         ];
     }

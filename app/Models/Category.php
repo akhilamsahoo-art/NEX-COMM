@@ -23,6 +23,10 @@ class Category extends Model
     {
         return $this->belongsTo(\App\Models\Tenant::class);
     }
+    public function seller()
+{
+    return $this->belongsTo(\App\Models\User::class, 'tenant_id');
+}
 
     protected static function booted()
 {

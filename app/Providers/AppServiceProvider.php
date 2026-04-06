@@ -6,6 +6,8 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Schema;
 use App\Models\Review;
 use App\Observers\ReviewObserver;
+use App\Models\Order;
+use App\Observers\OrderObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,5 +40,7 @@ class AppServiceProvider extends ServiceProvider
          * look at the ReviewObserver to run the AI logic."
          */
         Review::observe(ReviewObserver::class);
+
+        Order::observe(OrderObserver::class);
     }
 }

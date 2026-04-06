@@ -3,12 +3,15 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\UserResource\Pages;
+use Filament\Tables\Columns\TextColumn;
 use App\Models\User;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Tables\Actions\Action;
+use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -20,32 +23,24 @@ class UserResource extends Resource
     protected static ?int $navigationSort = 1;
     protected static ?string $navigationGroup = null;
 
-    // ✅ NAVIGATION CONTROL
+    // ✅ NAVIGATION CONTROL (EXISTING LOGIC KEPT)
     public static function shouldRegisterNavigation(): bool
     {
         if (!auth()->check()) {
             return false;
         }
 
-        if (auth()->user()->role === 'admin') {
-            return true;
-        }
-
-        return false;
+        return auth()->user()->role === User::ROLE_SUPER_ADMIN;
     }
 
-    // ✅ ACCESS CONTROL
+    // ✅ ACCESS CONTROL (EXISTING LOGIC KEPT)
     public static function canViewAny(): bool
     {
         if (!auth()->check()) {
             return false;
         }
 
-        if (auth()->user()->role === 'admin') {
-            return true;
-        }
-
-        return false;
+        return auth()->user()->role === User::ROLE_SUPER_ADMIN;
     }
 
     public static function canCreate(): bool
@@ -54,11 +49,7 @@ class UserResource extends Resource
             return false;
         }
 
-        if (auth()->user()->role === 'admin') {
-            return true;
-        }
-
-        return false;
+        return auth()->user()->role === User::ROLE_SUPER_ADMIN;
     }
 
     public static function canEdit($record): bool
@@ -67,11 +58,7 @@ class UserResource extends Resource
             return false;
         }
 
-        if (auth()->user()->role === 'admin') {
-            return true;
-        }
-
-        return false;
+        return auth()->user()->role === User::ROLE_SUPER_ADMIN;
     }
 
     public static function canDelete($record): bool
@@ -80,14 +67,10 @@ class UserResource extends Resource
             return false;
         }
 
-        if (auth()->user()->role === 'admin') {
-            return true;
-        }
-
-        return false;
+        return auth()->user()->role === User::ROLE_SUPER_ADMIN;
     }
 
-    // ✅ QUERY LOGIC (MULTI-TENANT SAFE)
+    // ✅ QUERY LOGIC (EXISTING LOGIC KEPT)
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();
@@ -98,12 +81,10 @@ class UserResource extends Resource
 
         $user = auth()->user();
 
-        // Super admin sees all users
-        if ($user->role === 'super_admin') {
+        if ($user->role === User::ROLE_SUPER_ADMIN) {
             return $query;
         }
 
-        // Admin sees only their tenant users
         return $query->where('tenant_id', $user->tenant_id);
     }
 
@@ -120,23 +101,22 @@ class UserResource extends Resource
                     Forms\Components\TextInput::make('email')
                         ->email()
                         ->required()
-                        ->unique(ignoreRecord: true)
+                        ->unique(null, null, null, true)
                         ->maxLength(255),
 
-                    // ✅ ROLE FIELD
                     Forms\Components\Select::make('role')
                         ->options([
-                            'super_admin' => 'Super Admin',
+                            User::ROLE_SUPER_ADMIN => 'Super Admin',
                             'admin' => 'Admin',
-                            'manager' => 'Manager',
-                            'seller' => 'Seller',
-                            'customer' => 'Customer',
+                            User::ROLE_MANAGER => 'Manager',
+                            User::ROLE_SELLER => 'Seller',
+                            User::ROLE_CUSTOMER => 'Customer',
                         ])
                         ->required()
                         ->disabled(function () {
                             if (!auth()->check()) return true;
 
-                            return auth()->user()->role !== 'super_admin';
+                            return auth()->user()->role !== User::ROLE_SUPER_ADMIN;
                         }),
 
                     Forms\Components\Toggle::make('is_active')
@@ -145,7 +125,7 @@ class UserResource extends Resource
                         ->offColor('danger')
                         ->helperText('Inactive users are restricted from placing orders.')
                         ->disabled(function ($record) {
-                            if (!auth()->check()) return true;
+                            if (!auth()->check() || !$record) return true;
 
                             return auth()->id() === $record->id;
                         })
@@ -161,7 +141,7 @@ class UserResource extends Resource
                         })
                         ->label('Reset Password')
                         ->visible(function ($record) {
-                            if (!auth()->check()) return false;
+                            if (!auth()->check() || !$record) return false;
 
                             return auth()->id() === $record->id;
                         })
@@ -178,12 +158,12 @@ class UserResource extends Resource
             ->columns([
 
                 Tables\Columns\TextColumn::make('name')
-                    ->searchable()
-                    ->sortable(),
+                    ->searchable(),
+                    // ->sortable(),
 
                 Tables\Columns\TextColumn::make('email')
-                    ->searchable()
-                    ->sortable(),
+                    ->searchable(),
+                    // ->sortable(),
 
                 Tables\Columns\BadgeColumn::make('role')
                     ->colors([
@@ -192,33 +172,53 @@ class UserResource extends Resource
                         'info' => 'manager',
                         'success' => 'seller',
                         'gray' => 'customer',
-                    ])
-                    ->sortable(),
+                    ]),
+                    // ->sortable(),
 
-                Tables\Columns\ToggleColumn::make('is_active')
+                TextColumn::make('is_active')
                     ->label('Status')
-                    ->onColor('success')
-                    ->offColor('danger')
-                    ->disabled(function ($record) {
-                        if (!auth()->check()) return true;
-
-                        return auth()->id() === $record->id;
-                    }),
+                    ->badge()
+                    ->formatStateUsing(fn (bool $state): string => $state ? 'Active' : 'Inactive')
+                    ->color(fn (bool $state): string => $state ? 'success' : 'danger')
+                    ->icon(fn (bool $state): string => $state ? 'heroicon-m-check-circle' : 'heroicon-m-x-circle'),
 
                 Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime('M d, Y')
-                    ->sortable(),
+                    ->dateTime('M d, Y'),
+                    // ->sortable(),
             ])
             ->recordUrl(null)
             ->actions([
-
-                Tables\Actions\ViewAction::make()
-                    ->visible(function () {
-                        if (!auth()->check()) return false;
-
-                        return auth()->user()->role === 'admin';
+                // ✅ NEW BUTTON LOGIC ADDED HERE
+                Action::make('set_active')
+                    ->label('Active')
+                    ->button()
+                    ->size('sm')
+                    ->color(fn ($record) => $record->is_active ? 'success' : 'gray')
+                    ->disabled(fn ($record) => $record->is_active) // Shaded if already active
+                    ->action(function ($record) {
+                        $record->update(['is_active' => true]);
+                        Notification::make()->title('User Activated')->success()->send();
                     }),
 
+                Action::make('set_inactive')
+                    ->label('Inactive')
+                    ->button()
+                    ->size('sm')
+                    ->color(fn ($record) => !$record->is_active ? 'danger' : 'gray')
+                    ->disabled(fn ($record) => !$record->is_active) // Shaded if already inactive
+                    ->requiresConfirmation()
+                    ->action(function ($record) {
+                        // Protection logic: Don't let admin deactivate themselves
+                        if (auth()->id() === $record->id) {
+                            Notification::make()->title('Error')->body('You cannot deactivate yourself.')->danger()->send();
+                            return;
+                        }
+                        $record->update(['is_active' => false]);
+                        Notification::make()->title('User Deactivated')->warning()->send();
+                    }),
+
+                Tables\Actions\ViewAction::make()
+                    ->visible(fn () => auth()->check() && auth()->user()->role === User::ROLE_SUPER_ADMIN),
             ])
             ->bulkActions([
                 // intentionally empty (security)

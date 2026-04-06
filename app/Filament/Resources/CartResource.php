@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CartResource\Pages;
 use App\Models\Cart;
+use App\Models\User;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -113,11 +114,17 @@ class CartResource extends Resource
     
         $user = auth()->user();
     
-        if ($user->role === 'super_admin') {
-            return $query;
-        }
+    //     if ($user->role === 'super_admin') {
+    //         return $query;
+    //     }
     
-        return $query->where('tenant_id', $user->tenant_id);
+    //     return $query->where('tenant_id', $user->tenant_id);
+    // }
+    if ($user->role === User::ROLE_SUPER_ADMIN) {
+    return $query;
+}
+
+return $query->where('tenant_id', $user->tenant_id);
     }
 
     public static function getRelations(): array

@@ -34,6 +34,7 @@ class User extends Authenticatable implements FilamentUser
         // 'is_admin',
         'tenant_id',
         'role',
+        'is_active',
     ];
 
     /**
@@ -49,6 +50,7 @@ class User extends Authenticatable implements FilamentUser
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'is_active' => 'boolean',
     ];
 
     /**
@@ -68,11 +70,13 @@ class User extends Authenticatable implements FilamentUser
      * Filament Avatar
      */
     public function getFilamentAvatarUrl(): ?string
-    {
-        return $this->avatar_url
-            ? Storage::disk('public')->url($this->avatar_url)
-            : null;
+{
+    if (!$this->avatar_url) {
+        return null;
     }
+
+    return asset('storage/' . $this->avatar_url);
+}
 
     /**
      * Filament Panel Access

@@ -12,23 +12,22 @@ class Kernel extends ConsoleKernel
      * Define the application's command schedule.
      */
     protected function schedule(Schedule $schedule): void
-    {
-        $schedule->call(function () {
-            // 1. Log that the task is starting
-            Log::info('Checking for orders to auto-deliver...');
+{
+    $schedule->call(function () {
 
-            // 2. Perform the update
-            $affected = \App\Models\Order::Order::where('shipment_status', 'shipped')
-                ->whereNotNull('shipped_at')
-                // Orders older than 24 hours (1 day)
-                ->where('shipped_at', '<=', now()->subDay()) 
-                ->update(['order_status' => 'delivered']);
-            // 3. Log the result so you know it worked
-            if ($affected > 0) {
-                Log::info("Successfully auto-delivered {$affected} orders.");
-            }
-        })->everyMinute();
-    }
+        Log::info('Checking for orders to auto-deliver...');
+
+        $affected = \App\Models\Order::where('shipment_status', 'shipped')
+            ->whereNotNull('shipped_at')
+            ->where('shipped_at', '<=', now()->subDay())
+            ->update(['order_status' => 'delivered']);
+
+        if ($affected > 0) {
+            Log::info("Successfully auto-delivered {$affected} orders.");
+        }
+
+    })->everyMinute();
+}
 
     /**
      * Register the commands for the application.

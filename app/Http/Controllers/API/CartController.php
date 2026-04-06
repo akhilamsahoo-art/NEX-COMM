@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Product;
+use App\Models\Order;
+use App\Models\OrderItem;
 use Illuminate\Http\Request;
 use App\Helpers\ApiResponse;
+use Illuminate\Support\Facades\DB;
 
 class CartController extends Controller
 {
@@ -26,7 +29,7 @@ class CartController extends Controller
         return ApiResponse::success($carts, 'Cart fetched successfully');
     }
 
-    // ✅ ADD TO CART (SELLER BASED CART)
+    // ✅ ADD TO CART (SELLER BASED CART + CREATE/UPDATE "IN_CART" ORDER)
     public function add(Request $request)
     {
         // 🔥 Validation
@@ -47,12 +50,12 @@ class CartController extends Controller
         if (!$cart) {
             $cart = Cart::create([
                 'user_id' => $request->user()->id,
-                'tenant_id' => $product->tenant_id, // ✅ FIXED
+                'tenant_id' => $product->tenant_id, 
                 'is_checked_out' => false
             ]);
         }
 
-        // ✅ Check if item exists
+        // ✅ Check if item exists in cart
         $item = CartItem::where('cart_id', $cart->id)
             ->where('product_id', $product->id)
             ->first();
@@ -69,6 +72,37 @@ class CartController extends Controller
 
         $item->load('product');
 
+        // 🔹 CREATE OR UPDATE IN_CART ORDER
+        DB::transaction(function () use ($request, $cart, $product, $item) {
+            $order = Order::firstOrCreate(
+                [
+                    'user_id' => $request->user()->id,
+                    'tenant_id' => $product->tenant_id,
+                    'order_status' => 'in_cart',
+                ],
+                [
+                    'total_amount' => 0,
+                    'payment_status' => 'pending',
+                    'shipment_status' => 'pending',
+                ]
+            );
+
+            $orderItem = OrderItem::updateOrCreate(
+                [
+                    'order_id' => $order->id,
+                    'product_id' => $product->id,
+                ],
+                [
+                    'quantity' => $item->quantity,
+                    'price' => $product->price
+                ]
+            );
+
+            // ✅ Update order total
+            $order->total_amount = $order->items()->sum(DB::raw('quantity * price'));
+            $order->save();
+        });
+
         return ApiResponse::success($item, 'Item added to cart');
     }
 
@@ -84,6 +118,30 @@ class CartController extends Controller
 
         if (!$item) {
             return ApiResponse::error('Cart item not found', 404);
+        }
+
+        $product = $item->product;
+        $tenantId = $item->cart->tenant_id;
+
+        // 🔹 Remove item from "in_cart" order
+        $order = Order::where('user_id', $request->user()->id)
+            ->where('tenant_id', $tenantId)
+            ->where('order_status', 'in_cart')
+            ->first();
+
+        if ($order) {
+            $orderItem = $order->items()->where('product_id', $product->id)->first();
+            if ($orderItem) {
+                $orderItem->delete();
+            }
+
+            // If order has no items left, delete it
+            if ($order->items()->count() === 0) {
+                $order->delete();
+            } else {
+                $order->total_amount = $order->items()->sum(DB::raw('quantity * price'));
+                $order->save();
+            }
         }
 
         $item->delete();
@@ -103,6 +161,19 @@ class CartController extends Controller
         }
 
         foreach ($carts as $cart) {
+            $tenantId = $cart->tenant_id;
+
+            // 🔹 Remove all items from "in_cart" order
+            $order = Order::where('user_id', $request->user()->id)
+                ->where('tenant_id', $tenantId)
+                ->where('order_status', 'in_cart')
+                ->first();
+
+            if ($order) {
+                $order->items()->delete();
+                $order->delete();
+            }
+
             CartItem::where('cart_id', $cart->id)->delete();
         }
 

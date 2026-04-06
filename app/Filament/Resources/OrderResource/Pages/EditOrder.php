@@ -28,6 +28,12 @@ class EditOrder extends EditRecord
     {
         return $this->getResource()::getUrl('index');
     }
+    protected function authorizeAccess(): void
+{
+    if (auth()->user()->role !== 'seller') {
+        abort(403, 'Only seller can edit orders');
+    }
+}
 
     /**
      * Custom notification message to confirm the update.
