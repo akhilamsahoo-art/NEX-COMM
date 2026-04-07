@@ -50,12 +50,12 @@ class ProductController extends Controller
         $q->where('slug', $slug);
     })->get();
 }
-public function indexByStore(Request $request)
-{
-    $tenant = $request->tenant;
+// public function indexByStore(Request $request)
+// {
+//     $tenant = $request->tenant;
 
-    return Product::where('tenant_id', $tenant->id)->get();
-}
+//     return Product::where('tenant_id', $tenant->id)->get();
+// }
 
 public function showByStore($slug, $id)
 {

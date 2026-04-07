@@ -3,6 +3,7 @@
 namespace App\Observers;
 
 use App\Models\Order;
+use App\Models\EmailLog;
 use App\Mail\OrderPlacedMail;
 use App\Mail\OrderShippedMail;
 use App\Mail\SellerNewOrderMail;
@@ -11,61 +12,111 @@ use Illuminate\Support\Facades\Mail;
 class OrderObserver
 {
     /**
-     * Triggered when a new order is saved to the database.
+     * Triggered when a new order is created
      */
-   public function created(Order $order): void
-{
-    // Force Laravel to fetch the user data from the database
-    $order->load(['user', 'items.product.tenant.user']);
+    public function created(Order $order): void
+    {
+        // Load all required relationships
+        $order->load(['user', 'items.product.tenant.user']);
 
-    // 1. Customer Email (Explicitly target the string)
-    if ($order->user && $order->user->email) {
-        $customerEmail = (string) $order->user->email; // Cast to string for safety
-        Mail::to($customerEmail)->send(new OrderPlacedMail($order));
-    }
+        /**
+         * ✅ 1. CUSTOMER EMAIL (Order Placed)
+         */
+        if ($order->user && $order->user->email) {
+            try {
+                Mail::to($order->user->email)
+                    ->queue(new OrderPlacedMail($order));
 
-    // 2. Seller Email
-    $firstItem = $order->items->first();
-    if ($firstItem && $firstItem->product && $firstItem->product->tenant) {
-        $seller = $firstItem->product->tenant->user;
-        if ($seller && $seller->email) {
-            $sellerEmail = (string) $seller->email;
-            Mail::to($sellerEmail)->send(new SellerNewOrderMail($order));
+                EmailLog::create([
+                    'to_email' => $order->user->email,
+                    'type' => 'order_placed',
+                    'status' => 'sent',
+                ]);
+            } catch (\Exception $e) {
+                EmailLog::create([
+                    'to_email' => $order->user->email,
+                    'type' => 'order_placed',
+                    'status' => 'failed',
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        /**
+         * ✅ 2. SELLER EMAILS (Multi-tenant safe)
+         */
+        $sellers = $order->items
+            ->map(fn($item) => $item->product->tenant->user ?? null)
+            ->filter()
+            ->unique('id');
+
+        foreach ($sellers as $seller) {
+            if ($seller && $seller->email) {
+                try {
+                    Mail::to($seller->email)
+                        ->queue(new SellerNewOrderMail($order));
+
+                    EmailLog::create([
+                        'to_email' => $seller->email,
+                        'type' => 'seller_new_order',
+                        'status' => 'sent',
+                    ]);
+                } catch (\Exception $e) {
+                    EmailLog::create([
+                        'to_email' => $seller->email,
+                        'type' => 'seller_new_order',
+                        'status' => 'failed',
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
     }
-}
 
     /**
-     * Triggered when an existing order is updated (e.g., in Filament).
+     * Triggered when order is updated
      */
     public function updated(Order $order): void
     {
-        // Check if the order_status was changed to 'shipped'
-        if ($order->isDirty('order_status') && $order->order_status === 'shipped') {
-            Mail::to($order->user->email)->send(new OrderShippedMail($order));
+        // Only trigger when shipment_status changes to shipped
+        if ($order->isDirty('shipment_status') && $order->shipment_status === 'shipped') {
+
+            // Load user if not loaded
+            $order->load('user');
+
+            if ($order->user && $order->user->email) {
+                try {
+                    Mail::to($order->user->email)
+                        ->queue(new OrderShippedMail($order));
+
+                    EmailLog::create([
+                        'to_email' => $order->user->email,
+                        'type' => 'order_shipped',
+                        'status' => 'sent',
+                        'order_id' => $order->id,
+                    ]);
+                } catch (\Exception $e) {
+                    EmailLog::create([
+                        'to_email' => $order->user->email,
+                        'type' => 'order_shipped',
+                        'status' => 'failed',
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
     }
 
-
-    /**
-     * Handle the Order "deleted" event.
-     */
     public function deleted(Order $order): void
     {
         //
     }
 
-    /**
-     * Handle the Order "restored" event.
-     */
     public function restored(Order $order): void
     {
         //
     }
 
-    /**
-     * Handle the Order "force deleted" event.
-     */
     public function forceDeleted(Order $order): void
     {
         //

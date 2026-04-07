@@ -17,13 +17,14 @@ class OrderController extends Controller
     }
 
     // Get all orders
-    public function index()
-    {
-        return response()->json([
-            'status' => true,
-            'data' => $this->orderService->getOrders()
-        ]);
-    }
+   // ✅ Change getOrders() to getAllOrders()
+public function index()
+{
+    return response()->json([
+        'status' => true,
+        'data' => $this->orderService->getAllOrders() 
+    ]);
+}
 
     // Show single order
     public function show($id)
@@ -39,9 +40,12 @@ class OrderController extends Controller
             // ❌ REMOVED: user_id (security risk)
             // 'user_id' => 'required|exists:users,id',
 
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
+            // 'items' => 'required|array|min:1',
+            // 'items.*.product_id' => 'required|exists:products,id',
+            // 'items.*.quantity' => 'required|integer|min:1',
+            'items' => 'required|array',
+    'items.*.product_id' => 'required|exists:products,id', // Change from cart_item_id
+    'items.*.quantity' => 'required|integer|min:1',
         ]);
 
         // ✅ Always use authenticated user

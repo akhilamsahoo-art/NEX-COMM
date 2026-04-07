@@ -5,11 +5,12 @@ namespace App\Mail;
 use App\Models\Order;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class OrderPlacedMail extends Mailable
+class OrderPlacedMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
@@ -23,17 +24,21 @@ class OrderPlacedMail extends Mailable
     {
         $this->order = $order;
     }
+    public function build()
+{
+    return $this->subject('Order Confirmation - #' . $this->order->id)
+                ->view('emails.orders.placed');
+}
 
     /**
      * Get the message envelope.
      */
-    public function envelope(): Envelope
-    {
-        // Removed the "subject:" name to support older PHP versions
-        return new Envelope(
-            'Order Confirmation - #' . $this->order->id
-        );
-    }
+   public function envelope(): Envelope
+{
+    return new Envelope(
+        subject: 'Order Confirmation - #' . $this->order->id
+    );
+}
 
     /**
      * Get the message content definition.
@@ -42,7 +47,7 @@ class OrderPlacedMail extends Mailable
     {
         // Removed the "view:" name to support older PHP versions
         return new Content(
-            'emails.orders.placed'
+           view: 'emails.orders.placed'
         );
     }
 

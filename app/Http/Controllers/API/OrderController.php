@@ -53,17 +53,31 @@ public function checkout(Request $request)
 {
     $user = $request->user();
 
+    if (!$user) {
+        return ApiResponse::error('Unauthenticated', 401);
+    }
+
     if ($user->role !== 'customer') {
         return ApiResponse::error('Only customers can checkout', 403);
     }
 
     $request->validate([
         'items' => 'required|array',
-        'items.*.cart_item_id' => 'required|exists:cart_items,id',
+        'items.*.product_id' => 'required|exists:products,id',
         'items.*.quantity' => 'required|integer|min:1'
     ]);
 
-    return $this->orderService->checkoutFromCart($user, $request->items);
+    try {
+        // We still run the service to create the order
+        $this->orderService->createOrder($user->id, $request->items);
+
+        // --- THE CHANGE IS HERE ---
+        // We pass null as the first argument so 'data' is empty/null
+        return ApiResponse::success(null, 'Order placed successfully');
+
+    } catch (\Exception $e) {
+        return ApiResponse::error($e->getMessage(), 400);
+    }
 }
 
     public function show(Request $request, $id)
