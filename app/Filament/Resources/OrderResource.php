@@ -98,82 +98,85 @@ class OrderResource extends Resource
                     Forms\Components\Group::make()
                         ->schema([
                             // Workflow
-                            Forms\Components\Section::make('Order Workflow')->schema([
-                                // ✅ SELLER DROPDOWN
-                                Forms\Components\Select::make('order_status')
-                                    ->label('Order Status')
-                                    ->options([
-                                        'in_cart' => 'In Cart',
-                                        'placed' => 'Order Placed',
-                                        'cancelled' => 'Cancelled',
-                                    ])
-                                    ->visible(fn () => auth()->user()->role === 'seller')
-                                    ->required()
-                                    ->disableOptionWhen(function ($value, $record) {
-                                        if (!$record) return false;
-                                        $stages = ['in_cart' => 1, 'placed' => 2, 'cancelled' => 3];
-                                        return $stages[$value] < $stages[$record->order_status];
-                                    }),
+                            Forms\Components\Section::make('Order Workflow')->schema([// ---------------- ORDER STATUS ----------------
+    Forms\Components\Select::make('order_status')
+        ->label('Order Status')
+        ->options([
+            'in_cart' => 'In Cart',
+            'placed' => 'Order Placed',
+            'cancelled' => 'Cancelled',
+        ])
+        ->visible(fn () => auth()->user()->role === 'seller')
+        ->required()
+        ->live() // 👈 Added: Allows other fields to react instantly
+        ->disableOptionWhen(function ($value, $record) {
+            if (!$record) return false;
+            $stages = ['in_cart' => 1, 'placed' => 2, 'cancelled' => 3];
+            return $stages[$value] < $stages[$record->order_status];
+        }),
 
-                                // ✅ ADMIN TEXT VIEW
-                                Forms\Components\TextInput::make('order_status')
-                                    ->label('Order Status')
-                                    ->disabled()
-                                    ->visible(fn () => auth()->user()->role !== 'seller'),
+    Forms\Components\TextInput::make('order_status')
+        ->label('Order Status')
+        ->disabled()
+        ->visible(fn () => auth()->user()->role !== 'seller'),
 
-                                // ---------------- PAYMENT ----------------
-                                Forms\Components\Select::make('payment_status')
-                                    ->label('Payment Status')
-                                    ->options([
-                                        'pending' => 'Pending',
-                                        'cash_on_delivery' => 'Cash on Delivery',
-                                        'online_payment' => 'Online Payment',
-                                        'card_payment' => 'Pay with Card',
-                                        'paid' => 'Paid',
-                                        'failed' => 'Failed',
-                                    ])
-                                    ->visible(fn () => auth()->user()->role === 'seller')
-                                    ->required()
-                                    ->disabled(fn ($record) =>
-                                        !$record || !in_array($record->order_status, ['order_placed'])
-                                    )
-                                    ->disableOptionWhen(function ($value, $record) {
-                                        if (!$record) return false;
-                                        $stages = ['pending' => 1, 'cash_on_delivery' => 2, 'online_payment' => 3, 'card_payment' => 4, 'paid' => 5, 'failed' => 6];
-                                        return $stages[$value] < $stages[$record->payment_status];
-                                    }),
+    // ---------------- PAYMENT STATUS ----------------
+    Forms\Components\Select::make('payment_status')
+        ->label('Payment Status')
+        ->options([
+            'pending' => 'Pending',
+            'cash_on_delivery' => 'Cash on Delivery',
+            'online_payment' => 'Online Payment',
+            'card_payment' => 'Pay with Card',
+            'paid' => 'Paid',
+            'failed' => 'Failed',
+        ])
+        ->visible(fn () => auth()->user()->role === 'seller')
+        ->required()
+        ->live() // 👈 Added: Makes the UI responsive
+        ->disableOptionWhen(function ($value, $record) {
+            if (!$record) return false;
+            $stages = ['pending' => 1, 'cash_on_delivery' => 2, 'online_payment' => 3, 'card_payment' => 4, 'paid' => 5, 'failed' => 6];
+            return $stages[$value] < $stages[$record->payment_status];
+        }),
 
-                                Forms\Components\TextInput::make('payment_status')
-                                    ->label('Payment Status')
-                                    ->disabled()
-                                    ->visible(fn () => auth()->user()->role !== 'seller'),
+    Forms\Components\TextInput::make('payment_status')
+        ->label('Payment Status')
+        ->disabled()
+        ->visible(fn () => auth()->user()->role !== 'seller'),
 
-                                // ---------------- SHIPMENT ----------------
-                                Forms\Components\Select::make('shipment_status')
-                                    ->label('Shipment Status')
-                                    ->options([
-                                        'pending' => 'Pending',
-                                        'processing' => 'Processing',
-                                        'shipped' => 'Shipped',
-                                        'delivered' => 'Delivered',
-                                        'cancelled' => 'Cancelled',
-                                    ])
-                                    ->visible(fn () => auth()->user()->role === 'seller')
-                                    ->required()
-                                    ->disabled(fn ($record) =>
-                                        !$record || !in_array($record->payment_status, ['paid', 'cash_on_delivery', 'card_payment'])
-                                    )
-                                    ->disableOptionWhen(function ($value, $record) {
-                                        if (!$record) return false;
-                                        $stages = ['pending' => 1, 'processing' => 2, 'shipped' => 3, 'delivered' => 4, 'cancelled' => 5];
-                                        return $stages[$value] < $stages[$record->shipment_status];
-                                    }),
+    // ---------------- SHIPMENT STATUS ----------------
+    Forms\Components\Select::make('shipment_status')
+        ->label('Shipment Status')
+        ->options([
+            'pending' => 'Pending',
+            'processing' => 'Processing',
+            'shipped' => 'Shipped',
+            'delivered' => 'Delivered',
+            'cancelled' => 'Cancelled',
+        ])
+        ->visible(fn () => auth()->user()->role === 'seller')
+        ->required()
+        ->disabled(false) // ✅ Correct: Always enabled
+        ->dehydrated()
+        ->live() // 👈 Added: Triggers immediate updates
+        ->disableOptionWhen(function ($value, $record) {
+            if (!$record) return false;
+            $stages = ['pending' => 1, 'processing' => 2, 'shipped' => 3, 'delivered' => 4, 'cancelled' => 5];
+            return $stages[$value] < $stages[$record->shipment_status];
+        })
+        ->afterStateUpdated(function ($state, callable $set) {
+            // 🚀 Logic: If shipment is marked 'delivered', 
+            // automatically update payment to 'paid'.
+            if ($state === 'delivered') {
+                $set('payment_status', 'paid');
+            }
+        }),
 
-                                Forms\Components\TextInput::make('shipment_status')
-                                    ->label('Shipment Status')
-                                    ->disabled()
-                                    ->visible(fn () => auth()->user()->role !== 'seller'),
-                            ]),
+    Forms\Components\TextInput::make('shipment_status')
+        ->label('Shipment Status')
+        ->disabled()
+        ->visible(fn () => auth()->user()->role !== 'seller'),]),
 
                             // Pricing
                             Forms\Components\Section::make('Pricing Summary')->schema([
@@ -186,10 +189,13 @@ class OrderResource extends Resource
                                 Forms\Components\Placeholder::make('seller_total')
                                     ->label('Your Earnings')
                                     ->content(function ($record) {
-                                        if (auth()->check() && auth()->user()->role === 'seller') return '-';
-                                        return $record->items
-                                            ->where('product.tenant_id', auth()->user()->tenant_id)
-                                            ->sum(fn ($item) => $item->price * $item->quantity);
+                                        if (auth()->check() && auth()->user()->role === 'seller') {
+                                            $total = $record->items
+                                                ->where('product.tenant_id', auth()->user()->tenant_id)
+                                                ->sum(fn ($item) => $item->price * $item->quantity);
+                                            return '$' . number_format($total, 2);
+                                        }
+                                        return '-';
                                     })
                                     ->visible(fn () => auth()->check() && auth()->user()->role === 'seller'),
                             ]),

@@ -1,0 +1,25 @@
+[90m= [39m[34;4mIlluminate\Database\Eloquent\Collection[39;24m {#6992
+    [34mall[39m: [
+      [34;4mApp\Models\User[39;24m {#6990
+        [34mid[39m: [35m5[39m,
+        [34memail[39m: "[32mseller12@test.com[39m",
+        [34mtenant_id[39m: [36mnull[39m,
+      },
+      [34;4mApp\Models\User[39;24m {#6989
+        [34mid[39m: [35m7[39m,
+        [34memail[39m: "[32mseller1@test.com[39m",
+        [34mtenant_id[39m: [35m2[39m,
+      },
+      [34;4mApp\Models\User[39;24m {#6988
+        [34mid[39m: [35m9[39m,
+        [34memail[39m: "[32mseller@test.com[39m",
+        [34mtenant_id[39m: [35m1[39m,
+      },
+      [34;4mApp\Models\User[39;24m {#6987
+        [34mid[39m: [35m10[39m,
+        [34memail[39m: "[32msellernew@test.com[39m",
+        [34mtenant_id[39m: [35m3[39m,
+      },
+    ],
+  }
+

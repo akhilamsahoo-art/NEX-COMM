@@ -23,6 +23,20 @@ class UserResource extends Resource
     protected static ?int $navigationSort = 1;
     protected static ?string $navigationGroup = null;
 
+  public static function mutateFormDataBeforeCreate(array $data): array
+    {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            $data['role'] = User::ROLE_MANAGER; // force manager role
+            $data['tenant_id'] = $user->tenant_id; // assign tenant automatically
+        }
+
+        return $data;
+    }
+
+
     // ✅ NAVIGATION CONTROL (EXISTING LOGIC KEPT)
     public static function shouldRegisterNavigation(): bool
     {
@@ -30,7 +44,11 @@ class UserResource extends Resource
             return false;
         }
 
-        return auth()->user()->role === User::ROLE_SUPER_ADMIN;
+        // return auth()->user()->role === User::ROLE_SUPER_ADMIN;
+        return in_array(auth()->user()->role, [
+    User::ROLE_SUPER_ADMIN,
+    User::ROLE_MANAGER,
+]);
     }
 
     // ✅ ACCESS CONTROL (EXISTING LOGIC KEPT)
@@ -40,25 +58,47 @@ class UserResource extends Resource
             return false;
         }
 
-        return auth()->user()->role === User::ROLE_SUPER_ADMIN;
+        // return auth()->user()->role === User::ROLE_SUPER_ADMIN;
+        return in_array(auth()->user()->role, [
+            User::ROLE_SUPER_ADMIN,
+            User::ROLE_MANAGER,
+        ]);
     }
+
+    // public static function canCreate(): bool
+    // {
+    //     if (!auth()->check()) {
+    //         return false;
+    //     }
+
+    //     // return auth()->user()->role === User::ROLE_SUPER_ADMIN;
+    //     return in_array(auth()->user()->role, [
+    //         User::ROLE_SUPER_ADMIN,
+    //         User::ROLE_MANAGER,
+    //     ]);
+    // }
+
 
     public static function canCreate(): bool
-    {
-        if (!auth()->check()) {
-            return false;
-        }
-
-        return auth()->user()->role === User::ROLE_SUPER_ADMIN;
+{
+    if (!auth()->check()) {
+        return false;
     }
 
+    // ✅ Only super admins can create new users (which will be managers)
+    return auth()->user()->role === User::ROLE_SUPER_ADMIN;
+} 
     public static function canEdit($record): bool
     {
         if (!auth()->check()) {
             return false;
         }
 
-        return auth()->user()->role === User::ROLE_SUPER_ADMIN;
+        // return auth()->user()->role === User::ROLE_SUPER_ADMIN;
+        return in_array(auth()->user()->role, [
+            User::ROLE_SUPER_ADMIN,
+            User::ROLE_MANAGER,
+        ]);
     }
 
     public static function canDelete($record): bool
@@ -72,21 +112,28 @@ class UserResource extends Resource
 
     // ✅ QUERY LOGIC (EXISTING LOGIC KEPT)
     public static function getEloquentQuery(): Builder
-    {
-        $query = parent::getEloquentQuery();
+{
+    $query = parent::getEloquentQuery();
 
-        if (!auth()->check()) {
-            return $query;
-        }
-
-        $user = auth()->user();
-
-        if ($user->role === User::ROLE_SUPER_ADMIN) {
-            return $query;
-        }
-
-        return $query->where('tenant_id', $user->tenant_id);
+    if (!auth()->check()) {
+        return $query;
     }
+
+     /** @var \App\Models\User $user */
+    $user = auth()->user();
+
+    if ($user->isSuperAdmin()) {
+        return $query;
+    }
+
+    if ($user->isManager()) {
+        return $query
+            ->where('tenant_id', $user->tenant_id)
+            ->where('manager_id', $user->id);
+    }
+
+    return $query->where('tenant_id', $user->tenant_id);
+}
 
     public static function form(Form $form): Form
     {
@@ -216,6 +263,12 @@ class UserResource extends Resource
                         $record->update(['is_active' => false]);
                         Notification::make()->title('User Deactivated')->warning()->send();
                     }),
+
+                    Tables\Actions\EditAction::make()
+        ->visible(fn () => in_array(auth()->user()->role, [
+            User::ROLE_MANAGER,
+            User::ROLE_SELLER,
+        ])),
 
                 Tables\Actions\ViewAction::make()
                     ->visible(fn () => auth()->check() && auth()->user()->role === User::ROLE_SUPER_ADMIN),

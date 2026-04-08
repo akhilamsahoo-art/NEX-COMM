@@ -6,18 +6,20 @@ use App\Models\Order;
 use App\Models\CartItem;
 use App\Models\OrderItem;
 use App\Models\Product;
-use App\Models\User; // Added User model
+use App\Models\User; 
 use Illuminate\Support\Facades\Mail;
 use App\Mail\OrderPlacedMail;
-use App\Mail\SellerNewOrderMail; // Import Seller Mail
-use App\Mail\OrderShippedMail;   // Import Shipped Mail
+use App\Mail\SellerNewOrderMail; 
+use App\Mail\OrderShippedMail;   
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OrderService
 {
     public function createOrder(int $userId, array $items): Order
     {
-        return DB::transaction(function () use ($userId, $items) {
+        // 1. Database logic inside the transaction
+        $order = DB::transaction(function () use ($userId, $items) {
             $user = auth()->user();
             $total = 0;
             $orderTenantId = null;
@@ -55,22 +57,32 @@ class OrderService
                 $product->decrement('quantity', $data['quantity']);
             }
 
-            // --- EMAILS ---
-            $order->load(['items.product', 'user']);
-            
-            // 1. Notify Customer
-            Mail::to($user->email)->send(new OrderPlacedMail($order));
-
-            // 2. Notify Seller (The owner of the tenant)
-            $seller = User::where('tenant_id', $orderTenantId)->where('role', 'seller')->first();
-            if ($seller) {
-                // Mail::to($seller->email)->send(new SellerNewOrderMail($order));
-                // Use load() to ensure products and user data are attached to the order object
-                Mail::to($seller->email)->send(new SellerNewOrderMail($order->load(['items.product', 'user'])));
-            }
-
             return $order;
         });
+
+        // 2. Email logic OUTSIDE the transaction
+        $order->load(['items.product', 'user']);
+        $currentUser = auth()->user();
+
+        // Notify Customer (Always check if email exists)
+        if ($currentUser && !empty($currentUser->email)) {
+            Mail::to($currentUser->email)->send(new OrderPlacedMail($order));
+        }
+
+        // Notify Seller
+        $seller = User::where('tenant_id', $order->tenant_id)
+                      ->where('role', 'seller')
+                      ->first();
+
+        // --- CRITICAL FIX: Check if seller exists AND has a valid email ---
+        if ($seller && !empty($seller->email)) {
+            Mail::to($seller->email)->send((new SellerNewOrderMail($order))->afterCommit());
+        } else {
+            // Log this so you know which tenant is missing a seller email
+            Log::warning("SellerNewOrderMail skipped: No seller or email found for Tenant ID: " . $order->tenant_id);
+        }
+
+        return $order;
     }
 
     /**
@@ -83,23 +95,21 @@ class OrderService
         $order->shipment_status = $status;
         $order->save();
 
-        // 3. Send Email only when status moves to 'shipped'
         if ($oldStatus !== 'shipped' && $status === 'shipped') {
-            Mail::to($order->user->email)->send(new OrderShippedMail($order));
+            if ($order->user && !empty($order->user->email)) {
+                Mail::to($order->user->email)->send(new OrderShippedMail($order));
+            }
         }
 
         return $order;
     }
 
-    
-
-
     /**
-     * ✅ NEW: Checkout from Cart
+     * ✅ Checkout from Cart
      */
     public function checkoutFromCart($user, $items)
     {
-        return DB::transaction(function () use ($user, $items) {
+        $order = DB::transaction(function () use ($user, $items) {
             $total = 0;
 
             $order = Order::create([
@@ -130,21 +140,32 @@ class OrderService
             }
 
             $order->update(['total_amount' => $total]);
-
-            // ✅ TRIGGER EMAIL HERE
-            Mail::to($user->email)->send(new OrderPlacedMail($order->load('user')));
-
-            return $order->load('items.product');
+            return $order;
         });
+
+        // Safety check for user email
+        if ($user && !empty($user->email)) {
+            Mail::to($user->email)->send(new OrderPlacedMail($order->load('user')));
+        }
+        $seller = User::where('tenant_id', $order->tenant_id)
+                      ->where('role', 'seller')
+                      ->first();
+
+        if ($seller && !empty($seller->email)) {
+            Mail::to($seller->email)->send((new SellerNewOrderMail($order))->afterCommit());
+        } else {
+            Log::warning("SellerNewOrderMail skipped in checkoutFromCart: No seller for Tenant ID: " . $order->tenant_id);
+        }
+
+        return $order->load('items.product');
     }
 
     /**
-     * Get all orders (admin) — tenant safe
+     * Get all orders (admin)
      */
     public function getAllOrders()
     {
         $user = auth()->user();
-
         return Order::with(['user', 'items.product'])
             ->where('tenant_id', $user->tenant_id)
             ->latest()
@@ -152,12 +173,11 @@ class OrderService
     }
 
     /**
-     * Get orders for a specific user — tenant safe
+     * Get orders for a specific user
      */
     public function getUserOrders(int $userId)
     {
         $user = auth()->user();
-
         return Order::with(['items.product'])
             ->where('user_id', $userId)
             ->where('tenant_id', $user->tenant_id)

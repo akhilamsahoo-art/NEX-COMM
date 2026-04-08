@@ -65,6 +65,15 @@ class User extends Authenticatable implements FilamentUser
     {
         return $this->belongsTo(\App\Models\Tenant::class);
     }
+    public function sellers()
+{
+    return $this->hasMany(User::class, 'manager_id');
+}
+
+public function manager()
+{
+    return $this->belongsTo(User::class, 'manager_id');
+}
 
     /**
      * Filament Avatar

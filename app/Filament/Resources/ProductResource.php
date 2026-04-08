@@ -29,165 +29,168 @@ class ProductResource extends Resource
     protected static ?string $navigationGroup = 'Shop Management';
     protected static ?int $navigationSort = 1;
 
-    // ✅ NEW (navigation control)
-   public static function shouldRegisterNavigation(): bool
-{
-    $user = auth()->user();
-
-    if (!$user) {
-        return false;
-    }
-
-    return in_array($user->role, [
-        User::ROLE_SUPER_ADMIN,
-        User::ROLE_MANAGER,
-        User::ROLE_SELLER
-    ]);
-}   
-    public static function form(Form $form): Form
+    // ✅ Navigation control
+    public static function shouldRegisterNavigation(): bool
     {
-        return $form
-            ->schema([
-                Section::make('Product Details')
-                    ->schema([
-                        TextInput::make('name')
-                            ->required()
-                            ->maxLength(191)
-                            ->live(true),
-
-                        TextInput::make('price')
-                            ->required()
-                            ->numeric()
-                            ->prefix('$'),
-
-                        // ✅ UPDATED (tenant-safe category selection)
-                        Select::make('category_id')
-                            ->label('Category')
-                            ->relationship(
-    'category',
-    'name',
-    function ($query) {
         $user = auth()->user();
 
-        if ($user && $user->role !== User::ROLE_SUPER_ADMIN) {
-            $query->where('tenant_id', $user->tenant_id);
+        if (!$user) {
+            return false;
         }
+
+        return in_array($user->role, [
+            User::ROLE_SUPER_ADMIN,
+            User::ROLE_MANAGER,
+            User::ROLE_SELLER
+        ]);
     }
-)
-                            ->preload()
-                            ->searchable()
-                            ->required()
-                            ->native(false),
 
-                        TextInput::make('quantity')
-                            ->label('Available Quantity')
-                            ->required()
-                            ->numeric()
-                            ->minValue(0)
-                            ->helperText('Number of items available in stock'),
+    public static function form(Form $form): Form
+    {
+        return $form->schema([
+            Section::make('Product Details')->schema([
+                TextInput::make('name')
+                    ->required()
+                    ->maxLength(191)
+                    ->live(true),
 
-                        TextInput::make('key_features')
-                            ->label('Key Features')
-                            ->placeholder('e.g. 40h battery, waterproof, fast charging')
-                            ->helperText('Add key features of the product.'),
+                TextInput::make('price')
+                    ->required()
+                    ->numeric()
+                    ->prefix('$'),
 
-                        Textarea::make('description')
-                            ->rows(6)
-                            ->columnSpanFull()
-                            ->hintAction(
-                                Action::make('generateAiDescription')
-                                    ->label('✨ AI Generate Description')
-                                    ->icon('heroicon-m-sparkles')
-                                    ->color('warning')
-                                    ->action(function (Forms\Set $set, Forms\Get $get) {
-                                        $name = $get('name');
-                                        $features = $get('key_features');
-                                        if (blank($name)) {
-                                            Notification::make()->title('Name required')->warning()->send();
-                                            return;
-                                        }
-                                        $aiService = app(AiFoundationService::class);
-                                        try {
-                                            $result = $aiService->generate('product_generator', [
-                                                'name' => $name,
-                                                'features' => $features ?? 'High quality premium product',
-                                            ]);
-                                            $set('description', $result);
-                                        } catch (\Exception $e) {
-                                            Notification::make()->title('AI Error')->danger()->send();
-                                        }
-                                    })
-                            ),
+                // ✅ Tenant-safe category selection
+                Select::make('category_id')
+                    ->label('Category')
+                    ->relationship('category', 'name', function ($query) {
+                        $user = auth()->user();
+                        if ($user && $user->role !== User::ROLE_SUPER_ADMIN) {
+                            $query->where('tenant_id', $user->tenant_id);
+                        }
+                    })
+                    ->preload()
+                    ->searchable()
+                    ->required()
+                    ->native(false),
 
-                        Forms\Components\Placeholder::make('total_sold')
-                            ->label('Total Units Sold')
-                            ->visible(fn ($record) => $record !== null)
-                            ->content(function ($record) {
-                                if (!$record) return 0;
+                TextInput::make('quantity')
+                    ->label('Available Quantity')
+                    ->required()
+                    ->numeric()
+                    ->minValue(0)
+                    ->helperText('Number of items available in stock'),
 
-                                return $record->orderItems()
-                                    ->whereHas('order', fn ($q) => $q->where('order_status', 'delivered'))
-                                    ->sum('quantity');
-                            }),
+                TextInput::make('key_features')
+                    ->label('Key Features')
+                    ->placeholder('e.g. 40h battery, waterproof, fast charging')
+                    ->helperText('Add key features of the product.'),
 
-                        FileUpload::make('image')
-                            ->label('Product Image')
-                            ->image()
-                            ->disk('public')
-                            ->directory('products')
-                            ->visibility('public')
-                            ->required()
-                            ->columnSpanFull(),
+                Textarea::make('description')
+                    ->rows(6)
+                    ->columnSpanFull()
+                    ->hintAction(
+                        Action::make('generateAiDescription')
+                            ->label('✨ AI Generate Description')
+                            ->icon('heroicon-m-sparkles')
+                            ->color('warning')
+                            ->action(function (Forms\Set $set, Forms\Get $get) {
+                                $name = $get('name');
+                                $features = $get('key_features');
 
-                    ])->columns(2),
+                                if (blank($name)) {
+                                    Notification::make()->title('Name required')->warning()->send();
+                                    return;
+                                }
 
-                Section::make('AI Review Insights')
-                    ->hiddenOn('create')
-                    ->schema([
-                        Textarea::make('ai_summary')
-                            ->label('Summarized Review Content')
-                            ->placeholder('AI is processing reviews in the background...')
-                            ->rows(4)
-                            ->columnSpanFull()
-                            ->live()
-                            ->readOnly()
-                            ->hintAction(
-                                Action::make('summarizeReviews')
-                                    ->label('✨ Force Re-Summarize')
-                                    ->icon('heroicon-m-arrow-path')
-                                    ->color('success')
-                                    ->action(function (Forms\Set $set, $record) {
-                                        if (!$record) {
-                                            Notification::make()->title('Save product first')->warning()->send();
-                                            return;
-                                        }
+                                $aiService = app(AiFoundationService::class);
 
-                                        $reviews = $record->reviews()->pluck('comment')->filter()->implode('; ');
+                                try {
+                                    $result = $aiService->generate('product_generator', [
+                                        'name' => $name,
+                                        'features' => $features ?? 'High quality premium product',
+                                    ]);
+                                    $set('description', $result);
+                                } catch (\Exception $e) {
+                                    Notification::make()->title('AI Error')->danger()->send();
+                                }
+                            })
+                    ),
 
-                                        if (empty($reviews)) {
-                                            Notification::make()->title('No reviews found to summarize.')->warning()->send();
-                                            return;
-                                        }
+                Forms\Components\Placeholder::make('total_sold')
+                    ->label('Total Units Sold')
+                    ->visible(function ($record) {
+                        return $record !== null;
+                    })
+                    ->content(function ($record) {
+                        if (!$record) {
+                            return 0;
+                        }
 
-                                        $aiService = app(AiFoundationService::class);
-                                        try {
-                                            $summary = $aiService->generate('review_summarizer', ['reviews' => $reviews]);
-                                            $set('ai_summary', $summary);
-                                            $record->update(['ai_summary' => $summary]);
-                                            Notification::make()->title('Summary Refreshed!')->success()->send();
-                                        } catch (\Exception $e) {
-                                            Notification::make()->title('AI Error')->danger()->send();
-                                        }
-                                    })
-                            ),
-                    ]),
-            ]);
+                        return $record->orderItems()
+                            ->whereHas('order', function ($q) {
+                                $q->where('order_status', 'delivered');
+                            })
+                            ->sum('quantity');
+                    }),
+
+                FileUpload::make('image')
+                    ->label('Product Image')
+                    ->image()
+                    ->disk('public')
+                    ->directory('products')
+                    ->visibility('public')
+                    ->required()
+                    ->columnSpanFull(),
+
+            ])->columns(2),
+
+            Section::make('AI Review Insights')
+                ->hiddenOn('create')
+                ->schema([
+                    Textarea::make('ai_summary')
+                        ->label('Summarized Review Content')
+                        ->placeholder('AI is processing reviews in the background...')
+                        ->rows(4)
+                        ->columnSpanFull()
+                        ->live()
+                        ->readOnly()
+                        ->hintAction(
+                            Action::make('summarizeReviews')
+                                ->label('✨ Force Re-Summarize')
+                                ->icon('heroicon-m-arrow-path')
+                                ->color('success')
+                                ->action(function (Forms\Set $set, $record) {
+                                    if (!$record) {
+                                        Notification::make()->title('Save product first')->warning()->send();
+                                        return;
+                                    }
+
+                                    $reviews = $record->reviews()->pluck('comment')->filter()->implode('; ');
+
+                                    if (empty($reviews)) {
+                                        Notification::make()->title('No reviews found to summarize.')->warning()->send();
+                                        return;
+                                    }
+
+                                    $aiService = app(AiFoundationService::class);
+
+                                    try {
+                                        $summary = $aiService->generate('review_summarizer', ['reviews' => $reviews]);
+                                        $set('ai_summary', $summary);
+                                        $record->update(['ai_summary' => $summary]);
+                                        Notification::make()->title('Summary Refreshed!')->success()->send();
+                                    } catch (\Exception $e) {
+                                        Notification::make()->title('AI Error')->danger()->send();
+                                    }
+                                })
+                        ),
+                ]),
+        ]);
     }
 
     public static function table(Table $table): Table
-{
-    return $table
-        ->columns([
+    {
+        return $table->columns([
             TextColumn::make('row_index')->label('#')->rowIndex(),
 
             ImageColumn::make('image')
@@ -197,127 +200,115 @@ class ProductResource extends Resource
                 ->visibility('public')
                 ->checkFileExistence(false),
 
-            TextColumn::make('name')
-                ->searchable(),
-                // ->sortable(),
+            TextColumn::make('name')->searchable(),
 
-            TextColumn::make('price')
-                ->money('USD'),
-                // ->sortable(),
+            TextColumn::make('price')->money('USD'),
 
-            TextColumn::make('category.name')
-                ->label('Category')
-                ->badge(),
-                // ->sortable(),
+            TextColumn::make('category.name')->label('Category')->badge(),
 
-            // ✅ FIXED
-        //    TextColumn::make('seller.name')
-        //         ->label('Seller')
-        //         ->searchable()
-        //         ->sortable()
-        //         ->visible(fn () => auth()->user()->role === 'admin'),
-        TextColumn::make('seller.name')
-    ->label('Seller')
-    ->searchable()
-    // ->sortable()
-    ->visible(function () {
-        /** @var \App\Models\User $user */
-        $user = auth()->user();
-        return $user && $user->isSuperAdmin();
-    }),
+            TextColumn::make('seller.name')
+                ->label('Seller')
+                ->searchable()
+                ->visible(function () {
+                    /** @var \App\Models\User $user */
+                    $user = auth()->user();
+                    return $user && $user->isSuperAdmin();
+                }),
 
             TextColumn::make('created_at')
                 ->dateTime()
-                // ->sortable()
                 ->toggleable(true, true),
-        ])
 
-        ->defaultPaginationPageOption(10)
-        ->paginated([5, 10, 25, 50, 100, 'all'])
+        ])->defaultPaginationPageOption(10)
+          ->paginated([5, 10, 25, 50, 100, 'all'])
+          ->actions([
+              Tables\Actions\Action::make('viewReviews')
+                  ->label('Reviews')
+                  ->icon('heroicon-o-chat-bubble-left-right')
+                  ->color('info')
+                  ->modalHeading(function ($record) {
+                      return "Reviews for " . $record->name;
+                  })
+                  ->modalWidth('2xl')
+                  ->modalSubmitAction(false)
+                  ->modalContent(function ($record) {
+                      return view('filament.components.product-reviews-modal', [
+                          'reviews' => $record->reviews()->with('user:id,name')->latest()->get(),
+                      ]);
+                  }),
 
-        ->filters([
-            //
-        ])
+              Tables\Actions\EditAction::make(),
 
-        ->actions([
-            Tables\Actions\Action::make('viewReviews')
-                ->label('Reviews')
-                ->icon('heroicon-o-chat-bubble-left-right')
-                ->color('info')
-                ->modalHeading(fn (Product $record) => "Reviews for " . $record->name)
-                ->modalWidth('2xl')
-                ->modalSubmitAction(false)
-                ->modalContent(fn (Product $record) => view(
-                    'filament.components.product-reviews-modal',
-                    ['reviews' => $record->reviews()->with('user:id,name')->latest()->get()]
-                )),
+              Tables\Actions\DeleteAction::make()
+                  ->visible(function () {
+                      $user = auth()->user();
+                      return $user && in_array($user->role, [User::ROLE_SUPER_ADMIN, User::ROLE_MANAGER]);
+                  }),
+          ])
+          ->bulkActions([
+              Tables\Actions\BulkActionGroup::make([
+                  Tables\Actions\DeleteBulkAction::make()
+                      ->visible(function () {
+                          $user = auth()->user();
+                          return $user && in_array($user->role, [User::ROLE_SUPER_ADMIN, User::ROLE_MANAGER]);
+                      }),
+              ]),
+          ]);
+    }
 
-            Tables\Actions\EditAction::make(),
-
-            // ✅ FIXED
-           Tables\Actions\DeleteAction::make()
-    ->visible(fn () => in_array(auth()->user()->role, [
-        User::ROLE_SUPER_ADMIN,
-        User::ROLE_MANAGER
-    ]))
-        ])
-
-        ->bulkActions([
-            Tables\Actions\BulkActionGroup::make([
-               Tables\Actions\DeleteBulkAction::make()
-    ->visible(fn () => in_array(auth()->user()->role, [
-        User::ROLE_SUPER_ADMIN,
-        User::ROLE_MANAGER
-    ]))
-            ]),
-        ]);
-}
-
-    // ✅ FINAL TENANT FILTER (clean + safe)
+    // ✅ Final tenant filter
     public static function getEloquentQuery(): Builder
-{
-    $query = parent::getEloquentQuery()->with(['category']);
+    {
+        $query = parent::getEloquentQuery()->with(['category']);
 
-    if (!auth()->check()) {
-        return $query;
-    }
+        if (!auth()->check()) {
+            return $query;
+        }
+            /** @var \App\Models\User $user */
+        $user = auth()->user();
 
-    /** @var \App\Models\User $user */
-    $user = auth()->user();
-
-    // ✅ FIXED: return query, not boolean
-    if ($user->isSuperAdmin()) {
-        return $query;
-    }
-
-    return $query->where('tenant_id', $user->tenant_id);
+        if ($user->isSuperAdmin()) {
+            return $query;
+        }
+        if ($user->isManager()) {
+    return $query
+        ->where('tenant_id', $user->tenant_id)
+        ->whereIn('user_id', $user->sellers->pluck('id'));
 }
 
-    // ✅ AUTO TENANT ASSIGN
+        return $query->where('tenant_id', $user->tenant_id);
+    }
+
+    // ✅ Auto tenant assign
     public static function mutateFormDataBeforeCreate(array $data): array
     {
         if (auth()->check()) {
-            $data['tenant_id'] = auth()->user()->tenant_id;
+                /** @var \App\Models\User $user */
+            $user = auth()->user();
+            $data['tenant_id'] = $user->tenant_id;
+
+            if ($user->isManager()) {
+                $data['manager_id'] = $user->id;
+            }
         }
 
         return $data;
     }
 
     public static function mutateFormDataBeforeSave(array $data): array
-{
-    if (!auth()->check()) {
+    {
+        if (!auth()->check()) {
+            return $data;
+        }
+            /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        if (!$user->isSuperAdmin()) {
+            $data['tenant_id'] = $user->tenant_id;
+        }
+
         return $data;
     }
-
-    /** @var \App\Models\User $user */
-    $user = auth()->user();
-
-    if (!$user->isSuperAdmin()) {
-        $data['tenant_id'] = $user->tenant_id;
-    }
-
-    return $data;
-}
 
     public static function getPages(): array
     {
