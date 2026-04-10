@@ -11,7 +11,9 @@ class Category extends Model
 
     protected $fillable = [
         'name',
-        'tenant_id', // ✅ ADD THIS
+        'slug',
+        'tenant_id', 
+        'user_id', // Assigned Seller
     ];
 
     public function products()
@@ -21,25 +23,43 @@ class Category extends Model
 
     public function tenant()
     {
-        return $this->belongsTo(\App\Models\Tenant::class);
+        return $this->belongsTo(Tenant::class);
     }
+
+    // ✅ FIX 1: Point to user_id, NOT tenant_id
     public function seller()
-{
-    return $this->belongsTo(\App\Models\User::class, 'tenant_id');
-}
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 
     protected static function booted()
-{
-    static::addGlobalScope('tenant', function ($query) {
-        if (auth()->check() && auth()->user()->role === 'seller') {
-            $query->where('tenant_id', auth()->user()->tenant_id);
-        }
-    });
+    {
+        // ✅ FIX 2: Correct Global Scope Logic
+        static::addGlobalScope('tenant_and_seller', function ($query) {
+            if (auth()->check()) {
+                $user = auth()->user();
 
-    static::creating(function ($category) {
-        if (auth()->check()) {
-            $category->tenant_id = auth()->user()->tenant_id;
-        }
-    });
-}
+                // If Manager: see all categories in their store/tenant
+                if ($user->role === 'manager') {
+                    $query->where('tenant_id', $user->tenant_id);
+                }
+
+                // If Seller: ONLY see categories assigned to them personally
+                if ($user->role === 'seller') {
+                    $query->where('user_id', $user->id);
+                }
+            }
+        });
+
+        static::creating(function ($category) {
+            if (auth()->check()) {
+                $category->tenant_id = auth()->user()->tenant_id;
+                
+                // If a seller is creating it, automatically set the user_id
+                if (auth()->user()->role === 'seller') {
+                    $category->user_id = auth()->id();
+                }
+            }
+        });
+    }
 }

@@ -10,26 +10,21 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Illuminate\Database\Eloquent\Builder;
 
 class CategoryResource extends Resource
 {
     protected static ?string $model = Category::class;
-
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
     protected static ?string $navigationGroup = 'Shop Management';
     protected static ?int $navigationSort = 1;
 
-    // ✅ Navigation control
     public static function shouldRegisterNavigation(): bool
     {
         $user = auth()->user();
-
-        if (!$user) {
-            return false;
-        }
-
-        return in_array($user->role, [
+        return $user && in_array($user->role, [
             User::ROLE_SUPER_ADMIN,
             User::ROLE_MANAGER,
             User::ROLE_SELLER,
@@ -39,9 +34,35 @@ class CategoryResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\TextInput::make('name')
-                ->required()
-                ->maxLength(191),
+            Forms\Components\Section::make('Category Details')
+                ->schema([
+                    TextInput::make('name')
+                        ->required()
+                        ->maxLength(191),
+
+                    Select::make('user_id')
+                        ->label('Assign Seller')
+                        ->options(function () {
+                            $user = auth()->user();
+
+                            $sellers = User::where('role', 'seller')
+                                ->where('tenant_id', $user->tenant_id)
+                                ->get();
+
+                            $options = [];
+                            foreach ($sellers as $seller) {
+                                $options[$seller->id] = $seller->name;
+                            }
+
+                            return $options;
+                        })
+                        ->required()
+                        ->hidden(fn () => auth()->user()->role === 'seller')
+                        ->visible(fn () => in_array(auth()->user()->role, ['manager', 'super_admin']))
+                        ->searchable()
+                        ->preload(),
+                ])
+                ->columns(2),
         ]);
     }
 
@@ -49,104 +70,59 @@ class CategoryResource extends Resource
     {
         return $table->columns([
             Tables\Columns\TextColumn::make('name')
-                ->searchable(),
+                ->searchable()
+                ->sortable(),
 
             Tables\Columns\TextColumn::make('seller.name')
                 ->label('Seller')
+                ->badge()
+                ->color('info')
                 ->visible(function () {
-                     /** @var \App\Models\User $user */
                     $user = auth()->user();
-                    return $user && $user->isSuperAdmin();
+                    return $user && in_array($user->role, ['super_admin', 'manager']);
                 }),
 
             Tables\Columns\TextColumn::make('created_at')
                 ->dateTime()
                 ->sortable()
-                ->toggleable(true, true),
-
-            Tables\Columns\TextColumn::make('updated_at')
-                ->dateTime()
-                ->sortable()
-                ->toggleable(true, true),
-        ])
-        ->filters([
-            //
+                ->toggleable(isToggledHiddenByDefault: true),
         ])
         ->actions([
             Tables\Actions\EditAction::make(),
 
             Tables\Actions\DeleteAction::make()
-                ->visible(function () {
-                    $user = auth()->user();
-                    return $user && in_array($user->role, [
-                        User::ROLE_SUPER_ADMIN,
-                        User::ROLE_MANAGER
-                    ]);
-                }),
+                ->visible(fn () => in_array(auth()->user()->role, ['super_admin', 'manager'])),
         ])
         ->bulkActions([
             Tables\Actions\BulkActionGroup::make([
                 Tables\Actions\DeleteBulkAction::make()
-                    ->visible(function () {
-                        $user = auth()->user();
-                        return $user && in_array($user->role, [
-                            User::ROLE_SUPER_ADMIN,
-                            User::ROLE_MANAGER
-                        ]);
-                    }),
+                    ->visible(fn () => in_array(auth()->user()->role, ['super_admin', 'manager'])),
             ]),
         ]);
     }
 
-    // ✅ Tenant-safe query
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();
 
-        if (!auth()->check()) {
-            return $query;
-        }
-            /** @var \App\Models\User $user */
-            $user = auth()->user();
-        
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        if (!$user) return $query;
 
         if ($user->isSuperAdmin()) {
             return $query;
         }
 
-        return $query->where('tenant_id', $user->tenant_id);
-    }
-
-    // ✅ Auto tenant assignment before create
-    public static function mutateFormDataBeforeCreate(array $data): array
-    {
-        if (auth()->check()) {
-            $user = auth()->user();
-            $data['tenant_id'] = $user->tenant_id;
+        if ($user->role === 'manager') {
+            return $query->where('tenant_id', $user->tenant_id);
         }
 
-        return $data;
-    }
-
-    // ✅ Auto tenant assignment before save
-    public static function mutateFormDataBeforeSave(array $data): array
-    {
-        if (!auth()->check()) {
-            return $data;
-        }
-         /** @var \App\Models\User $user */
-        $user = auth()->user();
-
-        if ($user->isSeller()) {
-            $data['tenant_id'] = $user->tenant_id;
+        if ($user->role === 'seller') {
+            return $query->where('user_id', $user->id);
         }
 
-        return $data;
-    }
-
-    public static function getRelations(): array
-    {
-        return [];
+        return $query;
     }
 
     public static function getPages(): array

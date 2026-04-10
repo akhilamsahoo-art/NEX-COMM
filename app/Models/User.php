@@ -11,6 +11,12 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Facades\Storage;
 
+
+/**
+ * @method bool isSuperAdmin()
+ * @method bool isManager()
+ * @method bool isSeller()
+ */
 class User extends Authenticatable implements FilamentUser
 {
     use HasApiTokens, HasFactory, Notifiable;

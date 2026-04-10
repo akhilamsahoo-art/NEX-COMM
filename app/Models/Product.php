@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Str;
 
 class Product extends Model
@@ -23,14 +25,29 @@ class Product extends Model
         'ai_summary',
         'quantity',
         'tenant_id',
+        'user_id',
     ];
 
+    // =========================
     // Relationships
-    public function orders()
+    // =========================
+
+    /**
+     * The User/Seller who owns the product.
+     */
+    public function seller(): BelongsTo
     {
-        return $this->belongsToMany(Order::class, 'order_product', 'product_id', 'order_id')
-                    ->withPivot('quantity')
-                    ->withTimestamps();
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    public function tenant(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::class);
     }
 
     public function orderItems(): HasMany
@@ -43,35 +60,75 @@ class Product extends Model
         return $this->hasMany(Review::class);
     }
 
-    public function category()
+    public function orders(): BelongsToMany
     {
-        return $this->belongsTo(Category::class);
+        return $this->belongsToMany(
+            Order::class,
+            'order_product',
+            'product_id',
+            'order_id'
+        )->withPivot('quantity')->withTimestamps();
     }
 
-    public function tenant()
-    {
-        return $this->belongsTo(Tenant::class);
-    }
-    public function seller()
-{
-    return $this->belongsTo(\App\Models\User::class, 'tenant_id');
-}
+    // =========================
+    // Model Boot Logic
+    // =========================
 
-    // Global scope for tenant
     protected static function booted()
     {
-        static::addGlobalScope('tenant', function ($query) {
-            if (auth()->check() && auth()->user()->role === 'seller') {
-                $query->where('tenant_id', auth()->user()->tenant_id);
+        /**
+         * Global tenant + seller isolation
+         * This ensures that even outside Filament, queries are scoped.
+         */
+        static::addGlobalScope('tenant_isolation', function ($query) {
+            if (!auth()->check()) {
+                return;
+            }
+
+            /** @var \App\Models\User $user */
+            $user = auth()->user();
+
+            // Super admins see everything; no scope applied.
+            if ($user->isSuperAdmin()) {
+                return;
+            }
+
+            // Sellers only see products assigned to them
+            if ($user->role === 'seller') {
+                $query->where('user_id', $user->id);
+            }
+
+            // Managers see all products in their tenant
+            if ($user->role === 'manager') {
+                $query->where('tenant_id', $user->tenant_id);
             }
         });
 
+        /**
+         * Creating logic: Auto-assign ownership and generate slug
+         */
         static::creating(function ($product) {
             if (auth()->check()) {
-                $product->tenant_id = auth()->user()->tenant_id;
+                /** @var \App\Models\User $user */
+                $user = auth()->user();
+
+                // Always assign the tenant of the creator
+                if (empty($product->tenant_id)) {
+                    $product->tenant_id = $user->tenant_id;
+                }
+
+                // If user is a seller, they are the owner
+                if ($user->role === 'seller') {
+                    $product->user_id = $user->id;
+                }
+
+                // If manager creates it and didn't select a seller, they become the owner
+                if ($user->role === 'manager' && empty($product->user_id)) {
+                    $product->user_id = $user->id;
+                }
             }
 
-            // Generate slug automatically
+            // Slug generation
             if (empty($product->slug) && !empty($product->name)) {
                 $product->slug = Str::slug($product->name);
             }

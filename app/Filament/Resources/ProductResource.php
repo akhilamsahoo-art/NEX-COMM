@@ -79,6 +79,35 @@ class ProductResource extends Resource
                     ->numeric()
                     ->minValue(0)
                     ->helperText('Number of items available in stock'),
+                
+                Select::make('user_id')
+    ->label('Assign Seller')
+    ->options(function () {
+        $user = auth()->user();
+        $sellerOptions = [];
+
+        // Fetching the sellers manually
+        $sellers = \App\Models\User::where('role', 'seller')
+            ->where('tenant_id', $user->tenant_id)
+            ->get();
+
+        // Old school loop to build the options array
+        foreach ($sellers as $seller) {
+            $sellerOptions[$seller->id] = $seller->name;
+        }
+
+        return $sellerOptions;
+    })
+    ->required()
+    ->searchable()
+    ->preload()
+    ->hidden(function () {
+        return auth()->user()->role === 'seller';
+    })
+    ->visible(function () {
+        $role = auth()->user()->role;
+        return $role === 'manager' || $role === 'super_admin';
+    }),
 
                 TextInput::make('key_features')
                     ->label('Key Features')
@@ -206,20 +235,27 @@ class ProductResource extends Resource
 
             TextColumn::make('category.name')->label('Category')->badge(),
 
-            TextColumn::make('seller.name')
-                ->label('Seller')
-                ->searchable()
-                ->visible(function () {
-                    /** @var \App\Models\User $user */
-                    $user = auth()->user();
-                    return $user && $user->isSuperAdmin();
-                }),
+           Tables\Columns\TextColumn::make('seller.name')
+            ->label('Seller')
+            ->searchable()
+            ->badge()
+            ->color('info')
+            ->visible(function () {
+                $user = auth()->user();
+                // Check if user is logged in and is either Super Admin or Manager
+                return $user && ($user->role === 'super_admin' || $user->role === 'manager');
+            }),
 
-            TextColumn::make('created_at')
-                ->dateTime()
-                ->toggleable(true, true),
+        Tables\Columns\TextColumn::make('created_at')
+            ->dateTime()
+            ->toggleable(isToggledHiddenByDefault: true),
+    ])
 
-        ])->defaultPaginationPageOption(10)
+            // TextColumn::make('created_at')
+            //     ->dateTime()
+            //     ->toggleable(true, true),
+
+        ->defaultPaginationPageOption(10)
           ->paginated([5, 10, 25, 50, 100, 'all'])
           ->actions([
               Tables\Actions\Action::make('viewReviews')
@@ -258,42 +294,58 @@ class ProductResource extends Resource
 
     // ✅ Final tenant filter
     public static function getEloquentQuery(): Builder
-    {
-        $query = parent::getEloquentQuery()->with(['category']);
+{
+    $query = parent::getEloquentQuery()->with(['category', 'seller']);
 
-        if (!auth()->check()) {
-            return $query;
-        }
-            /** @var \App\Models\User $user */
-        $user = auth()->user();
+    if (!auth()->check()) {
+        return $query;
+    }
 
-        if ($user->isSuperAdmin()) {
-            return $query;
-        }
-        if ($user->isManager()) {
-    return $query
-        ->where('tenant_id', $user->tenant_id)
-        ->whereIn('user_id', $user->sellers->pluck('id'));
-}
+    /** @var \App\Models\User $user */
+    $user = auth()->user();
 
+    // 1. Super Admin: ABSOLUTE VIEW
+    // If they are a super admin, we return the query immediately 
+    // without ANY where clauses.
+    if ($user->role === User::ROLE_SUPER_ADMIN || $user->isSuperAdmin()) {
+        return $query;
+    }
+
+    // 2. Manager: Scope to their specific Store
+    if ($user->role === User::ROLE_MANAGER) {
         return $query->where('tenant_id', $user->tenant_id);
     }
 
+    // 3. Seller: Scope to their specific items
+    if ($user->role === User::ROLE_SELLER) {
+        return $query->where('user_id', $user->id);
+    }
+
+    // If a user has no recognized role, show nothing for safety
+    return $query->whereRaw('1 = 0');
+}
+
     // ✅ Auto tenant assign
     public static function mutateFormDataBeforeCreate(array $data): array
-    {
-        if (auth()->check()) {
-                /** @var \App\Models\User $user */
-            $user = auth()->user();
-            $data['tenant_id'] = $user->tenant_id;
+{
+    $user = auth()->user();
 
-            if ($user->isManager()) {
-                $data['manager_id'] = $user->id;
-            }
-        }
-
-        return $data;
+    // Only assign tenant_id if the user actually belongs to one
+    if ($user->tenant_id) {
+        $data['tenant_id'] = $user->tenant_id;
     }
+
+    if ($user->role === User::ROLE_SELLER) {
+        $data['user_id'] = $user->id;
+    }
+
+    // If Manager/Admin didn't pick a seller, default to themselves
+    if (empty($data['user_id'])) {
+        $data['user_id'] = $user->id;
+    }
+
+    return $data;
+}
 
     public static function mutateFormDataBeforeSave(array $data): array
     {

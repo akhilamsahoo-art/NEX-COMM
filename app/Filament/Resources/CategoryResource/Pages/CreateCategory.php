@@ -16,4 +16,21 @@ class CreateCategory extends CreateRecord
     {
         return $this->getResource()::getUrl('index');
     }
+
+    protected function mutateFormDataBeforeCreate(array $data): array
+{
+    $user = auth()->user();
+
+    $data['tenant_id'] = $user->tenant_id;
+
+    if ($user->role === 'seller') {
+        $data['user_id'] = $user->id;
+    }
+
+    if ($user->role === 'manager' && empty($data['user_id'])) {
+        $data['user_id'] = $user->id;
+    }
+
+    return $data;
+}
 }

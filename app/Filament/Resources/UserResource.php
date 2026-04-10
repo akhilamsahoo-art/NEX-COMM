@@ -14,6 +14,7 @@ use Filament\Tables\Actions\Action;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
 
 class UserResource extends Resource
 {
@@ -23,18 +24,45 @@ class UserResource extends Resource
     protected static ?int $navigationSort = 1;
     protected static ?string $navigationGroup = null;
 
-  public static function mutateFormDataBeforeCreate(array $data): array
-    {
-        /** @var \App\Models\User $user */
-        $user = auth()->user();
+//   public static function mutateFormDataBeforeCreate(array $data): array
+//     {
+//         /** @var \App\Models\User $user */
+//         $user = auth()->user();
 
-        if ($user->isSuperAdmin()) {
-            $data['role'] = User::ROLE_MANAGER; // force manager role
-            $data['tenant_id'] = $user->tenant_id; // assign tenant automatically
+//         if ($user->isSuperAdmin()) {
+//             $data['role'] = User::ROLE_MANAGER; // force manager role
+//             $data['tenant_id'] = $user->tenant_id; // assign tenant automatically
+//         }
+
+//         return $data;
+//     }
+
+public static function mutateFormDataBeforeCreate(array $data): array
+{
+    /** @var \App\Models\User $user */
+    $user = auth()->user();
+
+    if ($user && $user->isSuperAdmin()) {
+        $data['role'] = User::ROLE_MANAGER;
+        
+        // ❌ REMOVE OR COMMENT OUT THIS LINE:
+        // $data['tenant_id'] = $user->tenant_id; 
+        
+        // ✅ ONLY set it if it's missing from the form data
+        if (empty($data['tenant_id'])) {
+            $data['tenant_id'] = $user->tenant_id;
         }
-
-        return $data;
     }
+
+    // Password generation logic
+    if (empty($data['password'])) {
+        $plainPassword = Str::random(10);
+        $data['password'] = Hash::make($plainPassword);
+        session()->flash('generated_password', $plainPassword);
+    }
+
+    return $data;
+}
 
 
     // ✅ NAVIGATION CONTROL (EXISTING LOGIC KEPT)
@@ -118,21 +146,17 @@ class UserResource extends Resource
     if (!auth()->check()) {
         return $query;
     }
-
-     /** @var \App\Models\User $user */
+    /** @var \App\Models\User $user */
     $user = auth()->user();
 
     if ($user->isSuperAdmin()) {
         return $query;
     }
+  
 
-    if ($user->isManager()) {
-        return $query
-            ->where('tenant_id', $user->tenant_id)
-            ->where('manager_id', $user->id);
-    }
-
-    return $query->where('tenant_id', $user->tenant_id);
+    return $query
+        ->where('tenant_id', $user->tenant_id)
+        ->where('role', '!=', User::ROLE_SUPER_ADMIN);
 }
 
     public static function form(Form $form): Form
@@ -150,21 +174,50 @@ class UserResource extends Resource
                         ->required()
                         ->unique(null, null, null, true)
                         ->maxLength(255),
+    //             Forms\Components\TextInput::make('password')
+    // ->password()
+    // ->label('Password')
+    // ->placeholder('Leave blank to auto-generate')
+    // // We remove ->required() so the browser lets us submit empty
+    // ->dehydrateStateUsing(fn ($state) => filled($state) ? Hash::make($state) : null)
+    // ->dehydrated(fn ($state) => filled($state)),
+            Forms\Components\Select::make('role')
+    ->options(function () {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
 
-                    Forms\Components\Select::make('role')
-                        ->options([
-                            User::ROLE_SUPER_ADMIN => 'Super Admin',
-                            'admin' => 'Admin',
-                            User::ROLE_MANAGER => 'Manager',
-                            User::ROLE_SELLER => 'Seller',
-                            User::ROLE_CUSTOMER => 'Customer',
-                        ])
-                        ->required()
-                        ->disabled(function () {
-                            if (!auth()->check()) return true;
+        if ($user->isSuperAdmin()) {
+            return [
+                User::ROLE_MANAGER => 'Manager',
+            ];
+        }
 
-                            return auth()->user()->role !== User::ROLE_SUPER_ADMIN;
-                        }),
+        if ($user->isManager()) {
+            return [
+                User::ROLE_SELLER => 'Seller',
+            ];
+        }
+
+        return [];
+    })
+    ->required(),
+   Forms\Components\Select::make('tenant_id')
+    ->label('Tenant')
+    ->relationship('tenant', 'name')
+    ->searchable()
+    ->preload()
+    ->required()
+    ->visible(function () {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        if ($user && $user->isSuperAdmin()) {
+            return true;
+        }
+
+        return false;
+    }),
+    // ->disabled(),
 
                     Forms\Components\Toggle::make('is_active')
                         ->label('Account Status')

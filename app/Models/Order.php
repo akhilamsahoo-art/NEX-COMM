@@ -52,11 +52,12 @@ class Order extends Model
     protected static function booted()
     {
 
-        static::creating(function ($model) {
-            if (auth()->check()) {
-                $model->tenant_id = auth()->user()->tenant_id;
-            }
-        });
+//    static::creating(function ($model) {
+//         // Only auto-assign if the tenant_id hasn't been manually set yet
+//         if (auth()->check() && !$model->tenant_id) {
+//             $model->tenant_id = auth()->user()->tenant_id;
+//         }
+    // });
         // Logic BEFORE the database saves
         static::updating(function ($order) {
             if ($order->isDirty('shipment_status') && $order->shipment_status === 'shipped') {

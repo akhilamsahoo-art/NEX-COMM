@@ -41,17 +41,18 @@ class AuthController extends Controller
         ]);
 
         // 🔥 Create tenant only for super admin
-        if ($role === 'super_admin') {
-            $tenant = Tenant::create([
-                'name' => 'Main Store',
-                'slug' => 'main-store-' . uniqid(),
-                'is_active' => true,
-                'owner_id' => $user->id,
-            ]);
+        // 🔥 Create tenant only for super admin
+if ($role === 'super_admin') {
+    $tenant = Tenant::create([
+        'name' => 'Main Store',
+        'slug' => 'main-store-' . uniqid(),
+        'is_active' => true,
+        'owner_id' => $user->id,
+    ]);
 
-            $user->tenant_id = $tenant->id;
-            $user->save();
-        }
+    $user->tenant_id = $tenant->id;
+    $user->save();
+}
 
         $token = $user->createToken('auth-token')->plainTextToken;
 
@@ -90,7 +91,7 @@ class AuthController extends Controller
 
         // 3️⃣ Link User → Tenant
         $user->tenant_id = $tenant->id;
-        $user->save();
+$user->save();
 
         // 4️⃣ Token
         $token = $user->createToken('seller-token')->plainTextToken;
