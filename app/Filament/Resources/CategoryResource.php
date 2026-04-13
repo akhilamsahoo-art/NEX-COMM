@@ -31,6 +31,19 @@ class CategoryResource extends Resource
         ]);
     }
 
+    public static function mutateFormDataBeforeCreate(array $data): array
+{
+    // If a seller is chosen, find their tenant_id and assign it to the category
+    if (!empty($data['user_id'])) {
+        $seller = User::find($data['user_id']);
+        if ($seller) {
+            $data['tenant_id'] = $seller->tenant_id;
+        }
+    }
+    
+    return $data;
+}
+
     public static function form(Form $form): Form
     {
         return $form->schema([
@@ -40,22 +53,42 @@ class CategoryResource extends Resource
                         ->required()
                         ->maxLength(191),
 
+                    // Select::make('user_id')
+                    //     ->label('Assign Seller')
+                    //     ->options(function () {
+                    //         $user = auth()->user();
+
+                    //         $sellers = User::where('role', 'seller')
+                    //             ->where('tenant_id', $user->tenant_id)
+                    //             ->get();
+
+                    //         $options = [];
+                    //         foreach ($sellers as $seller) {
+                    //             $options[$seller->id] = $seller->name;
+                    //         }
+
+                    //         return $options;
+                    //     })
                     Select::make('user_id')
-                        ->label('Assign Seller')
-                        ->options(function () {
-                            $user = auth()->user();
+    ->label('Assign Seller')
+    ->options(function () {
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
 
-                            $sellers = User::where('role', 'seller')
-                                ->where('tenant_id', $user->tenant_id)
-                                ->get();
+        // If Super Admin, show all sellers
+        if ($user->isSuperAdmin()) {
+            return User::where('role', 'seller')->pluck('name', 'id');
+        }
 
-                            $options = [];
-                            foreach ($sellers as $seller) {
-                                $options[$seller->id] = $seller->name;
-                            }
+        // If Manager, show only sellers assigned to THEM via manager_id
+        if ($user->role === 'manager') {
+            return User::where('role', 'seller')
+                ->where('manager_id', $user->id) // 👈 Use manager_id here!
+                ->pluck('name', 'id');
+        }
 
-                            return $options;
-                        })
+        return [];
+    })
                         ->required()
                         ->hidden(fn () => auth()->user()->role === 'seller')
                         ->visible(fn () => in_array(auth()->user()->role, ['manager', 'super_admin']))
@@ -115,8 +148,12 @@ class CategoryResource extends Resource
         }
 
         if ($user->role === 'manager') {
-            return $query->where('tenant_id', $user->tenant_id);
-        }
+        //     return $query->where('tenant_id', $user->tenant_id);
+        // }
+        return $query->whereHas('seller', function ($q) use ($user) {
+            $q->where('manager_id', $user->id);
+        })->orWhere('tenant_id', $user->tenant_id); // Also show manager's own categories
+    }
 
         if ($user->role === 'seller') {
             return $query->where('user_id', $user->id);

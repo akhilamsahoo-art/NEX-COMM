@@ -2,7 +2,6 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\Order;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
@@ -19,10 +18,11 @@ class ProfitLossChart extends ChartWidget
     {
         $user = auth()->user();
 
-        // ✅ Cache key is now unique to the user/tenant to prevent "zero-data" leakage between accounts
+        // Unique cache key per tenant/admin
         $cacheKey = 'profit_loss_chart_data_' . ($user->tenant_id ?? 'admin');
 
-        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($user) {
+        // Note: During development, you can change 30 to 0 to disable caching
+        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
             $sixMonthsAgo = Carbon::now()->subMonths(5)->startOfMonth();
 
             $query = DB::table('orders')
@@ -31,14 +31,17 @@ class ProfitLossChart extends ChartWidget
                 ->selectRaw('
                     DATE_FORMAT(orders.created_at, "%b") as month,
                     DATE_FORMAT(orders.created_at, "%Y-%m") as month_key,
-                    SUM(order_items.quantity * order_items.price) as total_revenue,
-                    SUM(order_items.quantity * products.cost_price) as total_cost
+                    SUM(COALESCE(order_items.quantity, 0) * COALESCE(order_items.price, 0)) as total_revenue,
+                    SUM(COALESCE(order_items.quantity, 0) * COALESCE(products.cost_price, 0)) as total_cost
                 ')
-                // ✅ FIX: Changed from 'delivered' to 'whereIn' so you see 'placed' orders too
-                ->whereIn('orders.order_status', ['placed', 'processing', 'shipped', 'delivered'])
+                /** * ✅ SYNC WITH DASHBOARD: 
+                 * If your Total Sales widget shows $0, it likely only counts 'delivered'.
+                 * Change this list to match exactly what your store considers "Successful Sales".
+                 */
+                ->whereIn('orders.order_status', ['delivered']) 
                 ->where('orders.created_at', '>=', $sixMonthsAgo);
 
-            // ✅ Seller isolation: Only show products belonging to this seller
+            // Seller isolation
             if ($user->role === 'seller') {
                 $query->where('products.tenant_id', $user->tenant_id);
             }
@@ -58,6 +61,7 @@ class ProfitLossChart extends ChartWidget
 
                 $monthData = $data->get($monthLabel);
                 
+                // Ensure we have numbers, even if no data exists for the month
                 $rev = $monthData ? (float) $monthData->total_revenue : 0;
                 $cost = $monthData ? (float) $monthData->total_cost : 0;
 
@@ -70,7 +74,7 @@ class ProfitLossChart extends ChartWidget
                     [
                         'label' => 'Net Profit',
                         'data' => $netProfitData,
-                        'borderColor' => '#10b981',
+                        'borderColor' => '#10b981', // Green
                         'backgroundColor' => 'rgba(16, 185, 129, 0.1)',
                         'fill' => 'start',
                         'tension' => 0.4,
@@ -78,8 +82,9 @@ class ProfitLossChart extends ChartWidget
                     [
                         'label' => 'Total Cost (COGS)',
                         'data' => $totalCostData,
-                        'borderColor' => '#ef4444',
+                        'borderColor' => '#ef4444', // Red
                         'backgroundColor' => 'rgba(239, 68, 68, 0.1)',
+                        'fill' => false,
                         'tension' => 0.4,
                     ],
                 ],

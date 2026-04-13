@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Database\Eloquent\Builder;
 
 class Order extends Model
 {
@@ -26,6 +27,10 @@ class Order extends Model
         'shipped_at' => 'datetime',
     ];
 
+    // =========================
+    // Relationships
+    // =========================
+
     public function user()
     {
         return $this->belongsTo(User::class);
@@ -34,7 +39,7 @@ class Order extends Model
     public function products()
     {
         return $this->belongsToMany(Product::class, 'order_product', 'order_id', 'product_id')
-            ->withPivot('quantity') // CRITICAL: Allows counting actual units sold
+            ->withPivot('quantity')
             ->withTimestamps();
     }
 
@@ -45,20 +50,62 @@ class Order extends Model
 
     public function cart()
     {
-    return $this->hasOne(\App\Models\Cart::class, 'user_id', 'user_id')
-                ->where('is_checked_out', false);
+        return $this->hasOne(\App\Models\Cart::class, 'user_id', 'user_id')
+                    ->where('is_checked_out', false);
     }
+
+    public function tenant()
+    {
+        return $this->belongsTo(\App\Models\Tenant::class);
+    }
+
+    // =========================
+    // Model Boot Logic
+    // =========================
 
     protected static function booted()
     {
+        /**
+         * Global Order Isolation
+         */
+        static::addGlobalScope('order_isolation', function (Builder $query) {
+            if (!auth()->check()) {
+                return;
+            }
 
-//    static::creating(function ($model) {
-//         // Only auto-assign if the tenant_id hasn't been manually set yet
-//         if (auth()->check() && !$model->tenant_id) {
-//             $model->tenant_id = auth()->user()->tenant_id;
-//         }
-    // });
-        // Logic BEFORE the database saves
+            /** @var \App\Models\User $user */
+            $user = auth()->user();
+
+            // 1. Super Admin: No restriction
+            if ($user->isSuperAdmin()) {
+                return;
+            }
+
+            // 2. Seller: Only see orders for their tenant
+            if ($user->role === 'seller') {
+                $query->where('orders.tenant_id', $user->tenant_id);
+            }
+
+            // 3. Manager: See orders for their tenant OR their managed sellers' tenants
+            if ($user->role === 'manager') {
+                $query->where(function (Builder $sub) use ($user) {
+                    $sub->where('orders.tenant_id', $user->tenant_id)
+                        ->orWhereIn('orders.tenant_id', function ($q) use ($user) {
+                            $q->select('tenant_id')
+                              ->from('users')
+                              ->where('manager_id', $user->id);
+                        });
+                });
+            }
+        });
+
+        // Auto-assign tenant_id on creation if not manually set
+        static::creating(function ($order) {
+            if (auth()->check() && empty($order->tenant_id)) {
+                $order->tenant_id = auth()->user()->tenant_id;
+            }
+        });
+
         static::updating(function ($order) {
             if ($order->isDirty('shipment_status') && $order->shipment_status === 'shipped') {
                 $order->shipped_at = now();
@@ -68,22 +115,11 @@ class Order extends Model
                 $order->paid_at = now();
             }
         });
-        // static::addGlobalScope('tenant', function ($query) {
-        //     if (auth()->check() && auth()->user()->tenant_id && !auth()->user()->isSuperAdmin()) {
-        //         $query->where('tenant_id', auth()->user()->tenant_id);
-        //     }
-        // });
 
-        // Logic AFTER the database saves (Clears the "Buffering" Chart Cache)
         static::updated(function ($order) {
             if ($order->wasChanged('order_status') && $order->order_status === 'delivered'){
-                // This forces the Profit Chart to show the new data instantly
                 Cache::forget('profit_loss_chart_data');
             }
         });
     }
-    public function tenant()
-{
-    return $this->belongsTo(\App\Models\Tenant::class);
-}
 }

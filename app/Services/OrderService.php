@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Log;
 class OrderService
 {
     /**
-     * ✅ Modified: Ensures Order inherits Product Tenant ID
+     * ✅ Create Order from direct API items
      */
     public function createOrder(int $userId, array $items): Order
     {
@@ -33,7 +33,7 @@ class OrderService
                     abort(400, $product->name . " is out of stock");
                 }
 
-                // 🚀 FIX: Grab Tenant ID from Product, not the logged-in Customer
+                // 🚀 Ensures the order is owned by the product's tenant (The Seller)
                 if ($orderTenantId === null) {
                     $orderTenantId = $product->tenant_id;
                 }
@@ -42,22 +42,23 @@ class OrderService
                 $validatedItems[] = ['product' => $product, 'quantity' => $item['quantity']];
             }
 
-            $order = new Order();
-            $order->user_id = $userId;
-            $order->tenant_id = $orderTenantId; // Linked to the store owner
-            $order->total_amount = $total;
-            $order->order_status = 'placed'; // Visible to Sellers
-            $order->payment_status = 'pending';
-            $order->shipment_status = 'pending';
-            $order->save();
+            // Creating the order with consistency for Filament Resource
+            $order = Order::create([
+                'user_id'         => $userId,
+                'tenant_id'       => $orderTenantId,
+                'total_amount'    => $total,
+                'order_status'    => 'placed', // Matches your Resource Filter
+                'payment_status'  => 'pending',
+                'shipment_status' => 'pending',
+            ]);
 
             foreach ($validatedItems as $data) {
                 $product = $data['product'];
                 OrderItem::create([
-                    'order_id' => $order->id,
+                    'order_id'   => $order->id,
                     'product_id' => $product->id,
-                    'quantity' => $data['quantity'],
-                    'price' => $product->price,
+                    'quantity'   => $data['quantity'],
+                    'price'      => $product->price,
                 ]);
                 $product->decrement('quantity', $data['quantity']);
             }
@@ -71,7 +72,7 @@ class OrderService
     }
 
     /**
-     * ✅ Modified: Fixed tenant inheritance from Cart Items
+     * ✅ Checkout from Cart logic
      */
     public function checkoutFromCart($user, $items)
     {
@@ -79,16 +80,16 @@ class OrderService
             $total = 0;
             $orderTenantId = null;
 
-            // Pre-fetch first item to determine the store/tenant
+            // Determine the store/tenant from the first item
             $firstItem = CartItem::with('product')->where('id', $items[0]['cart_item_id'])->first();
-            $orderTenantId = $firstItem ? $firstItem->product->tenant_id : $user->tenant_id;
+            $orderTenantId = $firstItem ? $firstItem->product->tenant_id : null;
 
             $order = Order::create([
-                'user_id' => $user->id,
-                'tenant_id' => $orderTenantId, // 🚀 FIX: Use product/store tenant
-                'total_amount' => 0,
-                'order_status' => 'placed',
-                'payment_status' => 'pending',
+                'user_id'         => $user->id,
+                'tenant_id'       => $orderTenantId,
+                'total_amount'    => 0,
+                'order_status'    => 'placed',
+                'payment_status'  => 'pending',
                 'shipment_status' => 'processing',
             ]);
 
@@ -100,10 +101,10 @@ class OrderService
                 $product->decrement('quantity', $item['quantity']);
 
                 OrderItem::create([
-                    'order_id' => $order->id,
+                    'order_id'   => $order->id,
                     'product_id' => $product->id,
-                    'quantity' => $item['quantity'],
-                    'price' => $product->price,
+                    'quantity'   => $item['quantity'],
+                    'price'      => $product->price,
                 ]);
 
                 $total += $product->price * $item['quantity'];
@@ -120,27 +121,26 @@ class OrderService
     }
 
     /**
-     * ✅ Modified: Differentiates between Super Admin and Tenant Scoping
+     * ✅ Fetches orders based on role hierarchy
      */
     public function getAllOrders()
     {
         $user = auth()->user();
         $query = Order::with(['user', 'items.product'])->latest();
 
-        // 🚀 FIX: Super Admin sees all, Managers/Sellers see only theirs
         if ($user->role === 'super_admin') {
             return $query->get();
         }
 
+        // Managers and Sellers only see orders for their tenant
         return $query->where('tenant_id', $user->tenant_id)->get();
     }
 
     /**
-     * ✅ Modified: Fixed Customer order history (Removes tenant restriction)
+     * ✅ Customer order history
      */
     public function getUserOrders(int $userId)
     {
-        // 🚀 FIX: Customers don't have tenant_id. Fetch solely by user_id.
         return Order::with(['items.product'])
             ->where('user_id', $userId)
             ->latest()
@@ -148,28 +148,41 @@ class OrderService
     }
 
     /**
-     * ✅ Helper: Keeps notification logic central and clean
+     * ✅ Internal Notification Logic
      */
     private function sendOrderNotifications(Order $order)
     {
         $order->load(['items.product', 'user']);
         $currentUser = auth()->user();
 
+        // Notify Customer
         if ($currentUser && !empty($currentUser->email)) {
-            Mail::to($currentUser->email)->send(new OrderPlacedMail($order));
+            try {
+                Mail::to($currentUser->email)->send(new OrderPlacedMail($order));
+            } catch (\Exception $e) {
+                Log::error("Failed to send customer email: " . $e->getMessage());
+            }
         }
 
+        // Notify Seller
         $seller = User::where('tenant_id', $order->tenant_id)
                       ->where('role', 'seller')
                       ->first();
 
         if ($seller && !empty($seller->email)) {
-            Mail::to($seller->email)->send((new SellerNewOrderMail($order))->afterCommit());
+            try {
+                Mail::to($seller->email)->send((new SellerNewOrderMail($order))->afterCommit());
+            } catch (\Exception $e) {
+                Log::error("Failed to send seller email: " . $e->getMessage());
+            }
         } else {
-            Log::warning("SellerNewOrderMail skipped: No seller found for Tenant ID: " . $order->tenant_id);
+            Log::warning("No seller found for Tenant ID: " . $order->tenant_id);
         }
     }
 
+    /**
+     * ✅ Update Shipping Status & Notify
+     */
     public function updateShippingStatus(int $orderId, string $status)
     {
         $order = Order::with('user')->findOrFail($orderId);

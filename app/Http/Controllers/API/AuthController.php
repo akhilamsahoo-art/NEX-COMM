@@ -63,6 +63,47 @@ if ($role === 'super_admin') {
     }
 
     // 🔥 SELLER REGISTER (MULTI-TENANT CORE)
+//     public function registerSeller(Request $request)
+//     {
+//         $validated = $request->validate([
+//             'name' => 'required|string|max:255',
+//             'email' => 'required|email|unique:users,email',
+//             'password' => 'required|min:6',
+//             'store_name' => 'nullable|string|max:255',
+//         ]);
+
+//         // 1️⃣ Create User
+//         $user = User::create([
+//             'name' => $validated['name'],
+//             'email' => $validated['email'],
+//             'password' => Hash::make($validated['password']),
+//             'role' => 'seller',
+//             'is_admin' => 0,
+//         ]);
+
+//         // 2️⃣ Create Tenant
+//         $tenant = Tenant::create([
+//             'name' => $validated['store_name'] ?? $user->name . "'s Store",
+//             'slug' => Str::slug(($validated['store_name'] ?? $user->name) . '-' . uniqid()),
+//             'is_active' => true,
+//             'owner_id' => $user->id,
+//         ]);
+
+//         // 3️⃣ Link User → Tenant
+//         $user->tenant_id = $tenant->id;
+// $user->save();
+
+//         // 4️⃣ Token
+//         $token = $user->createToken('seller-token')->plainTextToken;
+
+//         return ApiResponse::success([
+//             'user' => $user,
+//             'tenant' => $tenant,
+//             'token' => $token,
+//         ], 'Seller registered successfully');
+//     }
+
+// 🔥 SELLER REGISTER (MULTI-TENANT CORE)
     public function registerSeller(Request $request)
     {
         $validated = $request->validate([
@@ -72,6 +113,16 @@ if ($role === 'super_admin') {
             'store_name' => 'nullable|string|max:255',
         ]);
 
+        // --- OLD SCHOOL ADDITION START ---
+        // Find an active manager to assign this seller to. 
+        // We pick the one with the fewest sellers to balance the workload.
+        $manager = User::where('role', 'manager')
+            ->where('is_active', true)
+            ->withCount('sellers')
+            ->orderBy('sellers_count', 'asc')
+            ->first();
+        // --- OLD SCHOOL ADDITION END ---
+
         // 1️⃣ Create User
         $user = User::create([
             'name' => $validated['name'],
@@ -79,6 +130,7 @@ if ($role === 'super_admin') {
             'password' => Hash::make($validated['password']),
             'role' => 'seller',
             'is_admin' => 0,
+            'manager_id' => $manager ? $manager->id : null, // 👈 Assign the manager here
         ]);
 
         // 2️⃣ Create Tenant
@@ -91,7 +143,7 @@ if ($role === 'super_admin') {
 
         // 3️⃣ Link User → Tenant
         $user->tenant_id = $tenant->id;
-$user->save();
+        $user->save();
 
         // 4️⃣ Token
         $token = $user->createToken('seller-token')->plainTextToken;
@@ -100,6 +152,7 @@ $user->save();
             'user' => $user,
             'tenant' => $tenant,
             'token' => $token,
+            'assigned_manager' => $manager ? $manager->name : 'No manager available', // 👈 Helpful for debugging
         ], 'Seller registered successfully');
     }
 

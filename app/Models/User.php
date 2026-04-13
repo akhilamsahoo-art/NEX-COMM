@@ -39,6 +39,7 @@ class User extends Authenticatable implements FilamentUser
         'avatar_url',
         'is_admin',
         'tenant_id',
+        'manager_id',
         'role',
         'is_active',
     ];
@@ -57,6 +58,7 @@ class User extends Authenticatable implements FilamentUser
     protected $casts = [
         'email_verified_at' => 'datetime',
         'is_active' => 'boolean',
+        'is_admin' => 'boolean',
     ];
 
     /**

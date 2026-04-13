@@ -60,25 +60,53 @@ class ReviewResource extends Resource
             ]);
     }
 
-   public static function getEloquentQuery(): Builder
+//    public static function getEloquentQuery(): Builder
+// {
+//     $query = parent::getEloquentQuery();
+
+//     if (!auth()->check()) {
+//         return $query;
+//     }
+
+//     $user = auth()->user();
+
+//     // 1. Super Admins see everything
+//     if ($user->role === User::ROLE_SUPER_ADMIN) {
+//         return $query;
+//     }
+
+//     // 2. Everyone else (Sellers/Managers) only sees reviews for THEIR products
+//     return $query->whereHas('product', function (Builder $q) use ($user) {
+//         $q->where('tenant_id', $user->tenant_id);
+//     });
+// }
+public static function getEloquentQuery(): Builder
 {
-    $query = parent::getEloquentQuery();
-
-    if (!auth()->check()) {
-        return $query;
-    }
-
+    /** @var \App\Models\User $user */
     $user = auth()->user();
+    
+    // Use withoutGlobalScopes to bypass any automatic tenant filtering
+    $query = parent::getEloquentQuery()->withoutGlobalScopes();
 
-    // 1. Super Admins see everything
-    if ($user->role === User::ROLE_SUPER_ADMIN) {
+    if (!$user || $user->isSuperAdmin()) {
         return $query;
     }
 
-    // 2. Everyone else (Sellers/Managers) only sees reviews for THEIR products
-    return $query->whereHas('product', function (Builder $q) use ($user) {
-        $q->where('tenant_id', $user->tenant_id);
-    });
+    // Manager Logic: Bridge the gap to their Sellers' products
+    if ($user->role === User::ROLE_MANAGER) {
+        return $query->whereHas('product.seller', function (Builder $q) use ($user) {
+            $q->where('manager_id', $user->id);
+        });
+    }
+
+    // Seller Logic: Only see reviews for their own products
+    if ($user->role === User::ROLE_SELLER) {
+        return $query->whereHas('product', function (Builder $q) use ($user) {
+            $q->where('user_id', $user->id);
+        });
+    }
+
+    return $query;
 }
     public static function table(Table $table): Table
     {

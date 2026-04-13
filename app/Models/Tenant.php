@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Tenant extends Model
 {
-    protected $fillable = ['name', 'slug','is_active', 'email', 'logo'];
+    protected $fillable = ['name', 'slug','is_active', 'email', 'logo','owner_id'];
 
     public function users()
     {

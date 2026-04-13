@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Builder;
 
 class Product extends Model
 {
@@ -55,10 +56,15 @@ class Product extends Model
         return $this->hasMany(OrderItem::class);
     }
 
-    public function reviews(): HasMany
-    {
-        return $this->hasMany(Review::class);
-    }
+    // public function reviews(): HasMany
+    // {
+    //     return $this->hasMany(Review::class);
+    // }
+    // app/Models/Product.php
+public function reviews(): \Illuminate\Database\Eloquent\Relations\HasMany
+{
+    return $this->hasMany(Review::class);
+}
 
     public function orders(): BelongsToMany
     {
@@ -68,6 +74,7 @@ class Product extends Model
             'product_id',
             'order_id'
         )->withPivot('quantity')->withTimestamps();
+
     }
 
     // =========================
@@ -80,7 +87,7 @@ class Product extends Model
          * Global tenant + seller isolation
          * This ensures that even outside Filament, queries are scoped.
          */
-        static::addGlobalScope('tenant_isolation', function ($query) {
+        static::addGlobalScope('tenant_isolation', function (Builder $query) {
             if (!auth()->check()) {
                 return;
             }
@@ -98,9 +105,14 @@ class Product extends Model
                 $query->where('user_id', $user->id);
             }
 
-            // Managers see all products in their tenant
+            // ✅ MODIFIED: Managers see products in their tenant OR products belonging to their managed sellers
             if ($user->role === 'manager') {
-                $query->where('tenant_id', $user->tenant_id);
+                $query->where(function (Builder $subQuery) use ($user) {
+                    $subQuery->where('tenant_id', $user->tenant_id)
+                             ->orWhereHas('seller', function (Builder $sellerQuery) use ($user) {
+                                 $sellerQuery->where('manager_id', $user->id);
+                             });
+                });
             }
         });
 
@@ -112,7 +124,8 @@ class Product extends Model
                 /** @var \App\Models\User $user */
                 $user = auth()->user();
 
-                // Always assign the tenant of the creator
+                // ✅ MODIFIED: Only assign the creator's tenant_id if one wasn't manually passed 
+                // (This allows the Resource to assign the Seller's tenant_id)
                 if (empty($product->tenant_id)) {
                     $product->tenant_id = $user->tenant_id;
                 }

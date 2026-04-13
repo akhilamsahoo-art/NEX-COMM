@@ -274,69 +274,51 @@ class OrderResource extends Resource
     }
 
 
-//     public static function getEloquentQuery(): Builder
-// {
-//     // 1. Basic query with relationships
-//     $query = parent::getEloquentQuery()->with(['user', 'items.product']);
-
-//     if (!auth()->check()) {
-//         return $query;
-//     }
-
-//     $user = auth()->user();
-
-//     // 2. Logic for SELLERS
-//     if ($user->role === 'seller') {
-//         return $query
-//             // ✅ HIDE 'in_cart' status from Sellers
-//             ->where('order_status', '!=', 'in_cart') 
-//             // Keep your existing tenant isolation
-//             ->whereHas('items.product', function ($q) use ($user) {
-//                 $q->where('tenant_id', $user->tenant_id);
-//             });
-//     }
-
-//     // 3. Logic for ADMIN / MANAGER
-//     // We don't add any 'where' clauses here, so they see EVERYTHING (including 'in_cart')
-//     return $query;
-// }
-
 // public static function getEloquentQuery(): Builder
 // {
-//     $user = auth()->user();
-//     $query = parent::getEloquentQuery()->with(['user', 'items.product']);
+//     $query = parent::getEloquentQuery()
+//         ->with(['user', 'items.product']);
 
 //     if (!auth()->check()) {
-//         return $query->whereRaw('1 = 0'); // Return empty if not logged in
+//         return $query->whereRaw('1 = 0');
 //     }
 
 //     $user = auth()->user();
 
-//     // 1. ADMIN: Sees everything
 //     if ($user->role === 'super_admin') {
 //         return $query;
 //     }
 
-//     // 2. MANAGER: Sees all orders associated with their tenant/shop
 //     if ($user->role === 'manager') {
 //         return $query->whereHas('items.product', function ($q) use ($user) {
 //             $q->where('tenant_id', $user->tenant_id);
 //         });
 //     }
 
-//     // 3. SELLER: Sees only placed orders (no carts) for their tenant/shop
 //     if ($user->role === 'seller') {
-//         return $query
-//             ->where('order_status', '!=', 'in_cart') 
-//             ->whereHas('items.product', function ($q) use ($user) {
-//                 $q->where('tenant_id', $user->tenant_id);
-//             });
-//     }
+
+//     $query = $query->where('order_status', '!=', 'in_cart');
+
+//     $query = $query->whereExists(function ($subQuery) use ($user) {
+
+//         $subQuery->select(DB::raw(1))
+//             ->from('order_items')
+//             ->join('products', function ($join) {
+//                 $join->on('products.id', '=', 'order_items.product_id');
+//             })
+//             ->whereColumn('order_items.order_id', 'orders.id')
+//             ->where('products.tenant_id', '=', $user->tenant_id);
+//     });
 
 //     return $query;
 // }
+
+//     return $query->whereRaw('1 = 0');
+// }
+
 public static function getEloquentQuery(): Builder
 {
+    // 1. Start the query with necessary relationships
     $query = parent::getEloquentQuery()
         ->with(['user', 'items.product']);
 
@@ -344,36 +326,48 @@ public static function getEloquentQuery(): Builder
         return $query->whereRaw('1 = 0');
     }
 
+    /** @var \App\Models\User $user */
     $user = auth()->user();
 
+    // 2. SUPER ADMIN: Full Access
     if ($user->role === 'super_admin') {
         return $query;
     }
 
+    // 3. MANAGER: Sees orders for their own tenant + managed sellers
     if ($user->role === 'manager') {
-        return $query->whereHas('items.product', function ($q) use ($user) {
-            $q->where('tenant_id', $user->tenant_id);
+        return $query->where(function (Builder $sub) use ($user) {
+            $sub->where('orders.tenant_id', $user->tenant_id)
+                ->orWhereIn('orders.tenant_id', function ($q) use ($user) {
+                    $q->select('tenant_id')
+                      ->from('users')
+                      ->where('manager_id', $user->id);
+                });
         });
     }
 
+    // 4. SELLER: Sees only completed/placed orders belonging to their specific tenant
     if ($user->role === 'seller') {
+        // We keep your logic: Sellers should NEVER see "in_cart" orders (abandoned/active carts)
+        $query->where('order_status', '!=', 'in_cart');
 
-    $query = $query->where('order_status', '!=', 'in_cart');
+        // Robust check: Ensure the order actually belongs to the seller's tenant
+        // We use the direct column for speed, but whereExists as a fallback/verification
+        $query->where(function (Builder $sub) use ($user) {
+            $sub->where('orders.tenant_id', $user->tenant_id)
+                ->orWhereExists(function ($subQuery) use ($user) {
+                    $subQuery->select(DB::raw(1))
+                        ->from('order_items')
+                        ->join('products', 'products.id', '=', 'order_items.product_id')
+                        ->whereColumn('order_items.order_id', 'orders.id')
+                        ->where('products.tenant_id', $user->tenant_id);
+                });
+        });
 
-    $query = $query->whereExists(function ($subQuery) use ($user) {
+        return $query;
+    }
 
-        $subQuery->select(DB::raw(1))
-            ->from('order_items')
-            ->join('products', function ($join) {
-                $join->on('products.id', '=', 'order_items.product_id');
-            })
-            ->whereColumn('order_items.order_id', 'orders.id')
-            ->where('products.tenant_id', '=', $user->tenant_id);
-    });
-
-    return $query;
-}
-
+    // Default: Return nothing if role doesn't match
     return $query->whereRaw('1 = 0');
 }
     public static function canCreate(): bool

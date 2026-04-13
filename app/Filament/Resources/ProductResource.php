@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
+use App\Filament\Resources\ProductResource\RelationManagers;
 use App\Models\User;
 use App\Models\Product;
 use App\Services\AiFoundationService;
@@ -60,18 +61,51 @@ class ProductResource extends Resource
                     ->prefix('$'),
 
                 // ✅ Tenant-safe category selection
+                // Select::make('category_id')
+                //     ->label('Category')
+                //     ->relationship('category', 'name', function ($query) {
+                //         $user = auth()->user();
+                //         if ($user && $user->role !== User::ROLE_SUPER_ADMIN) {
+                //             $query->where('tenant_id', $user->tenant_id);
+                //         }
+                //     })
+                //     ->preload()
+                //     ->searchable()
+                //     ->required()
+                //     ->native(false),
                 Select::make('category_id')
-                    ->label('Category')
-                    ->relationship('category', 'name', function ($query) {
-                        $user = auth()->user();
-                        if ($user && $user->role !== User::ROLE_SUPER_ADMIN) {
-                            $query->where('tenant_id', $user->tenant_id);
-                        }
-                    })
-                    ->preload()
-                    ->searchable()
-                    ->required()
-                    ->native(false),
+    ->label('Category')
+    ->relationship('category', 'name', function ($query) {
+        $user = auth()->user();
+
+        // 1. Super Admins see everything
+        if ($user->role === User::ROLE_SUPER_ADMIN) {
+            return $query;
+        }
+
+        /** @var \App\Models\User $user */
+        return $query->withoutGlobalScopes() // 👈 IMPORTANT: Bypass the tenant wall
+            ->where(function ($q) use ($user) {
+                // Rules for what the user can see:
+                $q->where('tenant_id', $user->tenant_id) // 1. Their own categories
+                  ->orWhereNull('tenant_id');            // 2. Global categories (tenant_id is null)
+                
+                // 3. If they are a Seller, let them see their Manager's categories
+                if ($user->role === 'seller' && $user->manager_id) {
+                    $manager = \App\Models\User::find($user->manager_id);
+                    if ($manager) {
+                        $q->orWhere('tenant_id', $manager->tenant_id);
+                    }
+                }
+
+                // 4. If they are a Manager, let them see their own store's categories
+                // (Already covered by tenant_id, but good for clarity)
+            });
+    })
+    ->preload()
+    ->searchable()
+    ->required()
+    ->native(false),
 
                 TextInput::make('quantity')
                     ->label('Available Quantity')
@@ -81,22 +115,44 @@ class ProductResource extends Resource
                     ->helperText('Number of items available in stock'),
                 
                 Select::make('user_id')
+    // ->label('Assign Seller')
+    // ->options(function () {
+    //     $user = auth()->user();
+    //     $sellerOptions = [];
+
+    //     // Fetching the sellers manually
+    //     $sellers = \App\Models\User::where('role', 'seller')
+    //         ->where('tenant_id', $user->tenant_id)
+    //         ->get();
+
+    //     // Old school loop to build the options array
+    //     foreach ($sellers as $seller) {
+    //         $sellerOptions[$seller->id] = $seller->name;
+    //     }
+
+    //     return $sellerOptions;
     ->label('Assign Seller')
-    ->options(function () {
-        $user = auth()->user();
-        $sellerOptions = [];
+->options(function () {
+    $user = auth()->user();
+    $sellerOptions = [];
 
-        // Fetching the sellers manually
-        $sellers = \App\Models\User::where('role', 'seller')
-            ->where('tenant_id', $user->tenant_id)
-            ->get();
+    // 1. Start the query for sellers
+    $query = \App\Models\User::where('role', 'seller');
 
-        // Old school loop to build the options array
-        foreach ($sellers as $seller) {
-            $sellerOptions[$seller->id] = $seller->name;
-        }
+    // 2. If the logged-in user is a Manager, only show sellers assigned to THEM
+    if ($user->role === 'manager') {
+        $query->where('manager_id', $user->id);
+    } 
+    // 3. If Super Admin, you can leave it as is to see all sellers in the system
+    
+    $sellers = $query->get();
 
-        return $sellerOptions;
+    // 4. Old school loop to build the options array
+    foreach ($sellers as $seller) {
+        $sellerOptions[$seller->id] = $seller->name;
+    }
+
+    return $sellerOptions;
     })
     ->required()
     ->searchable()
@@ -216,6 +272,12 @@ class ProductResource extends Resource
                 ]),
         ]);
     }
+    public static function getRelations(): array
+{
+    return [
+        RelationManagers\ReviewsRelationManager::class,
+    ];
+}
 
     public static function table(Table $table): Table
     {
@@ -293,55 +355,116 @@ class ProductResource extends Resource
     }
 
     // ✅ Final tenant filter
-    public static function getEloquentQuery(): Builder
+//     public static function getEloquentQuery(): Builder
+// {
+//     $query = parent::getEloquentQuery()->with(['category', 'seller']);
+
+//     if (!auth()->check()) {
+//         return $query;
+//     }
+
+//     /** @var \App\Models\User $user */
+//     $user = auth()->user();
+
+//     // 1. Super Admin: ABSOLUTE VIEW
+//     // If they are a super admin, we return the query immediately 
+//     // without ANY where clauses.
+//     if ($user->role === User::ROLE_SUPER_ADMIN || $user->isSuperAdmin()) {
+//         return $query;
+//     }
+
+//     // 2. Manager: Scope to their specific Store
+//     if ($user->role === User::ROLE_MANAGER) {
+//         return $query->where('tenant_id', $user->tenant_id);
+//     }
+
+//     // 3. Seller: Scope to their specific items
+//     if ($user->role === User::ROLE_SELLER) {
+//         return $query->where('user_id', $user->id);
+//     }
+
+//     // If a user has no recognized role, show nothing for safety
+//     return $query->whereRaw('1 = 0');
+// }
+
+
+public static function getEloquentQuery(): Builder
 {
-    $query = parent::getEloquentQuery()->with(['category', 'seller']);
-
-    if (!auth()->check()) {
-        return $query;
-    }
-
     /** @var \App\Models\User $user */
     $user = auth()->user();
 
-    // 1. Super Admin: ABSOLUTE VIEW
-    // If they are a super admin, we return the query immediately 
-    // without ANY where clauses.
-    if ($user->role === User::ROLE_SUPER_ADMIN || $user->isSuperAdmin()) {
+    // 1. We MUST use withoutGlobalScopes() to stop Filament/Laravel from forcing 
+    // the Manager into their own tenant (Tenant 1) when looking at Seller products (Tenant 2).
+    $query = parent::getEloquentQuery()
+        ->withoutGlobalScopes()
+        ->with(['category', 'seller']);
+
+    if (!$user || $user->isSuperAdmin()) {
         return $query;
     }
 
-    // 2. Manager: Scope to their specific Store
+    // 2. Manager Logic: Bridge the gap to Sellers
     if ($user->role === User::ROLE_MANAGER) {
-        return $query->where('tenant_id', $user->tenant_id);
+        return $query->whereHas('seller', function (Builder $q) use ($user) {
+            $q->where('manager_id', $user->id);
+        });
     }
 
-    // 3. Seller: Scope to their specific items
+    // 3. Seller Logic: Only see what they own
     if ($user->role === User::ROLE_SELLER) {
-        return $query->where('user_id', $user->id);
+        // We explicitly use the user_id and the tenant_id to be safe
+        return $query->where('user_id', $user->id)
+                     ->where('tenant_id', $user->tenant_id);
     }
 
-    // If a user has no recognized role, show nothing for safety
     return $query->whereRaw('1 = 0');
 }
 
     // ✅ Auto tenant assign
-    public static function mutateFormDataBeforeCreate(array $data): array
+//     public static function mutateFormDataBeforeCreate(array $data): array
+// {
+//     $user = auth()->user();
+
+//     // Only assign tenant_id if the user actually belongs to one
+//     if ($user->tenant_id) {
+//         $data['tenant_id'] = $user->tenant_id;
+//     }
+
+//     if ($user->role === User::ROLE_SELLER) {
+//         $data['user_id'] = $user->id;
+//     }
+
+//     // If Manager/Admin didn't pick a seller, default to themselves
+//     if (empty($data['user_id'])) {
+//         $data['user_id'] = $user->id;
+//     }
+
+//     return $data;
+// }
+public static function mutateFormDataBeforeCreate(array $data): array
 {
+    /** @var \App\Models\User $user */
     $user = auth()->user();
 
-    // Only assign tenant_id if the user actually belongs to one
-    if ($user->tenant_id) {
+    // 1. If a specific Seller was selected in the dropdown (Manager/Admin action)
+    if (!empty($data['user_id'])) {
+        $targetSeller = \App\Models\User::find($data['user_id']);
+        
+        if ($targetSeller) {
+            // CRITICAL: Set the product's tenant to match the Seller's tenant
+            // Even if the Manager is in Tenant 1, the product must go to the Seller's Tenant
+            $data['tenant_id'] = $targetSeller->tenant_id;
+        }
+    } 
+    // 2. If no seller was selected (Usually when a Seller creates their own product)
+    else {
+        $data['user_id'] = $user->id;
         $data['tenant_id'] = $user->tenant_id;
     }
 
-    if ($user->role === User::ROLE_SELLER) {
-        $data['user_id'] = $user->id;
-    }
-
-    // If Manager/Admin didn't pick a seller, default to themselves
-    if (empty($data['user_id'])) {
-        $data['user_id'] = $user->id;
+    // 3. Final Safety: Ensure tenant_id is never NULL if the user has one
+    if (empty($data['tenant_id']) && $user->tenant_id) {
+        $data['tenant_id'] = $user->tenant_id;
     }
 
     return $data;
@@ -365,7 +488,8 @@ class ProductResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ListProducts::route('/'),
+        
+    'index' => Pages\ListProducts::route('/'),
             'create' => Pages\CreateProduct::route('/create'),
             'view' => Pages\ViewProduct::route('/{record}'),
             'edit' => Pages\EditProduct::route('/{record}/edit'),

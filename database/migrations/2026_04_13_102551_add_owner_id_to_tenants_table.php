@@ -9,17 +9,19 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
+    public function up()
 {
     Schema::table('tenants', function (Blueprint $table) {
-        $table->boolean('is_active')->default(true);
+        // Add owner_id as a foreign key pointing to the users table
+        $table->foreignId('owner_id')->nullable()->constrained('users')->onDelete('cascade')->after('id');
     });
 }
 
-public function down(): void
+public function down()
 {
     Schema::table('tenants', function (Blueprint $table) {
-        $table->dropColumn('is_active');
+        $table->dropForeign(['owner_id']);
+        $table->dropColumn('owner_id');
     });
 }
 };
