@@ -13,6 +13,7 @@ class Order extends Model
 
     protected $fillable = [
         'user_id',
+        'address_id',
         'total_amount',
         'total_price',
         'order_status',
@@ -21,10 +22,12 @@ class Order extends Model
         'payment_method',
         'shipped_at',
         'tenant_id',
+        'paid_at',
     ];
 
     protected $casts = [
         'shipped_at' => 'datetime',
+        'paid_at' => 'datetime',
     ];
 
     // =========================
@@ -58,6 +61,11 @@ class Order extends Model
     {
         return $this->belongsTo(\App\Models\Tenant::class);
     }
+
+    public function address()
+{
+    return $this->belongsTo(Address::class);
+}
 
     // =========================
     // Model Boot Logic

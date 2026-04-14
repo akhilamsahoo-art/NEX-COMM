@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Resources\UserResource\RelationManagers;
 use Filament\Infolists\Infolist;
 use Filament\Infolists\Components;
 use App\Filament\Resources\UserResource\Pages;
@@ -529,6 +530,13 @@ public static function form(Form $form): Form
                     User::ROLE_MANAGER,
                 ])),
             ]);
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            RelationManagers\AddressesRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

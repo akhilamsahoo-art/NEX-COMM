@@ -18,10 +18,11 @@ class OrderService
 {
     /**
      * ✅ Create Order from direct API items
+     * Modified to accept and save address_id
      */
-    public function createOrder(int $userId, array $items): Order
+    public function createOrder(int $userId, array $items, int $addressId): Order
     {
-        $order = DB::transaction(function () use ($userId, $items) {
+        $order = DB::transaction(function () use ($userId, $items, $addressId) {
             $total = 0;
             $orderTenantId = null;
             $validatedItems = [];
@@ -42,12 +43,13 @@ class OrderService
                 $validatedItems[] = ['product' => $product, 'quantity' => $item['quantity']];
             }
 
-            // Creating the order with consistency for Filament Resource
+            // Creating the order with address_id included
             $order = Order::create([
                 'user_id'         => $userId,
+                'address_id'      => $addressId, // 🆕 Added address_id
                 'tenant_id'       => $orderTenantId,
                 'total_amount'    => $total,
-                'order_status'    => 'placed', // Matches your Resource Filter
+                'order_status'    => 'placed', 
                 'payment_status'  => 'pending',
                 'shipment_status' => 'pending',
             ]);
@@ -73,10 +75,11 @@ class OrderService
 
     /**
      * ✅ Checkout from Cart logic
+     * Modified to accept and save address_id
      */
-    public function checkoutFromCart($user, $items)
+    public function checkoutFromCart($user, $items, int $addressId)
     {
-        $order = DB::transaction(function () use ($user, $items) {
+        $order = DB::transaction(function () use ($user, $items, $addressId) {
             $total = 0;
             $orderTenantId = null;
 
@@ -86,6 +89,7 @@ class OrderService
 
             $order = Order::create([
                 'user_id'         => $user->id,
+                'address_id'      => $addressId, // 🆕 Added address_id
                 'tenant_id'       => $orderTenantId,
                 'total_amount'    => 0,
                 'order_status'    => 'placed',

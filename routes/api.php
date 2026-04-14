@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 // Import Controllers
 use App\Http\Controllers\API\ProductController; 
+
 use App\Http\Controllers\API\Admin\AdminProductController;
 use App\Http\Controllers\API\Admin\AnalyticsController;
 // use App\Http\Controllers\OrderController;
@@ -14,6 +15,7 @@ use App\Http\Controllers\API\CategoryController;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\ProductController as AiProductController;
 use App\Http\Controllers\API\ReviewController;
+use App\Http\Controllers\API\AddressController;
 
 /*
 |--------------------------------------------------------------------------
@@ -42,6 +44,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/user/profile', [AuthController::class, 'updateProfile']);
+
+    Route::post('/addresses', [AddressController::class, 'store']);
+    Route::get('/addresses', [AddressController::class, 'index']);
 });
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/cart', [CartController::class, 'index']);

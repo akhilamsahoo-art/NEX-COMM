@@ -44,7 +44,7 @@ class AdminPanelProvider extends PanelProvider
                 'gray' => Color::Slate,
             ])
             // ->login(\App\Filament\Pages\Auth\Login::class)
-            ->login(null)
+            ->login()
             ->authGuard('web')
             ->darkMode(false)
             ->font('Inter')
@@ -88,6 +88,21 @@ class AdminPanelProvider extends PanelProvider
                 'panels::head.done',
                 fn (): HtmlString => new HtmlString('
                     <style>
+                        /* --- LOGIN PAGE STYLING --- */
+                        /* 1. Background of the entire login screen */
+                        .fi-panels-login-page {
+                            background-color: #0f172a !important; /* Deep Dark Slate */
+                            background-image: radial-gradient(circle at top right, #1e293b, #0f172a) !important;
+                        }
+
+                        /* 2. Style the Login Card (Optional) */
+                        .fi-panels-login-page .fi-card {
+                            background-color: #ffffff !important;
+                            border-radius: 1.25rem !important;
+                            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+                        }
+
+                        /* --- EXISTING DASHBOARD STYLING --- */
                         /* 1. SIDEBAR - Deep Slate Grey Background */
                         .fi-sidebar, 
                         .fi-sidebar nav, 

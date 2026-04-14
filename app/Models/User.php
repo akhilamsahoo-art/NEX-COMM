@@ -68,6 +68,10 @@ class User extends Authenticatable implements FilamentUser
     {
         return $this->hasMany(Order::class);
     }
+public function addresses(): \Illuminate\Database\Eloquent\Relations\HasMany
+{
+    return $this->hasMany(Address::class);
+}
 
     public function tenant()
     {

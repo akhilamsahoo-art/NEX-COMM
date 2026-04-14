@@ -2,6 +2,9 @@
 
 namespace App\Filament\Resources;
 
+
+use Filament\Infolists\Infolist;
+use Filament\Infolists\Components;
 use App\Filament\Resources\OrderResource\Pages;
 use App\Models\Order;
 use Filament\Forms;
@@ -41,8 +44,31 @@ class OrderResource extends Resource
                                 Forms\Components\Select::make('user_id')
                                     ->relationship('user', 'name')
                                     ->label('Customer')
+                                    ->live()
                                     ->disabled(fn () => auth()->user()->role === 'seller')
                                     ->required(),
+
+                                    Forms\Components\Select::make('address_id')
+                                        ->label('Shipping Address')
+                                        ->options(function (Forms\Get $get) {
+                                                        $userId = $get('user_id'); // Get the value of the customer selected above
+            
+                                            if (!$userId) {
+                                                return [];
+                                            }
+
+            // Fetch only addresses belonging to the selected customer
+            return \App\Models\Address::where('user_id', $userId)
+                ->get()
+                ->mapWithKeys(function ($address) {
+                    // Display a nice formatted address string
+                    return [$address->id => "{$address->address_line_1}, {$address->city} ({$address->postal_code})"];
+                });
+        })
+        ->searchable()
+        ->required()
+        ->disabled(fn ($record) => $record !== null)
+        ->placeholder('Select customer first'),
 
                                 Forms\Components\Textarea::make('notes')
                                     ->columnSpanFull(),
@@ -51,48 +77,130 @@ class OrderResource extends Resource
                             // Order Items
                             Forms\Components\Section::make('Order Items')->schema([
                                 Forms\Components\Repeater::make('items')
-                                    ->relationship('items')
-                                    ->schema([
-                                        Forms\Components\Placeholder::make('product_image')
-                                            ->label('Image')
-                                            ->content(function ($record) {
-                                                if (!$record || !$record->product || !$record->product->image) {
-                                                    return 'No Image';
-                                                }
+    //                                 ->relationship('items')
+    //                                 ->schema([
+    //                                     Forms\Components\Placeholder::make('product_image')
+    //                                         ->label('Image')
+    //                                         ->content(function ($record) {
+    //                                             if (!$record || !$record->product || !$record->product->image) {
+    //                                                 return 'No Image';
+    //                                             }
 
-                                                return new \Illuminate\Support\HtmlString(
-                                                    '<img src="' . asset('storage/' . $record->product->image) . '" 
-                                                    style="width:50px;height:50px;border-radius:8px;object-fit:cover;" />'
-                                                );
-                                            }),
+    //                                             return new \Illuminate\Support\HtmlString(
+    //                                                 '<img src="' . asset('storage/' . $record->product->image) . '" 
+    //                                                 style="width:50px;height:50px;border-radius:8px;object-fit:cover;" />'
+    //                                             );
+    //                                         }),
 
-                                        Forms\Components\Select::make('product_id')
-                                            ->relationship('product', 'name')
-                                            ->label('Product')
-                                            ->disabled(),
+    //                                     Forms\Components\Select::make('product_id')
+    //                                         ->relationship('product', 'name')
+    //                                         ->label('Product')
+    //                                         ->disabled(),
 
-                                        Forms\Components\TextInput::make('quantity')
-                                            ->numeric()
-                                            ->disabled(),
+    //                                     Forms\Components\TextInput::make('quantity')
+    //                                         ->numeric()
+    //                                         ->disabled(),
 
-                                        Forms\Components\TextInput::make('price')
-                                            ->label('Unit Price')
-                                            ->numeric()
-                                            ->prefix('$')
-                                            ->readOnly()
-                                            ->dehydrated()
-                                            ->afterStateHydrated(function ($component, $state, $record) {
-                                                if ($record) {
-                                                    $component->state($record->price);
-                                                }
-                                            }),
-                                    ])
-                                    ->columns(4)
-                                    ->addable(false)
-                                    ->deletable(false)
-                                    ->reorderable(false),
+    //                                     Forms\Components\TextInput::make('price')
+    //                                         ->label('Unit Price')
+    //                                         ->numeric()
+    //                                         ->prefix('$')
+    //                                         ->readOnly()
+    //                                         ->dehydrated()
+    //                                         ->afterStateHydrated(function ($component, $state, $record) {
+    //                                             if ($record) {
+    //                                                 $component->state($record->price);
+    //                                             }
+    //                                         }),
+    //                                 ])
+                                   
+    // // This ensures it only shows up if the order has an address saved
+   
+    //                                 ->columns(4)
+    //                                 ->addable(false)
+    //                                 ->deletable(false)
+    //                                 ->reorderable(false),
+
+
+    ->relationship('items', function (Builder $query) {
+            if (auth()->user()->role === 'seller') {
+                return $query->whereHas('product', function ($q) {
+                    $q->where('tenant_id', auth()->user()->tenant_id);
+                });
+            }
+            return $query;
+        })
+        ->schema([
+            Forms\Components\Placeholder::make('product_image')
+                ->label('Image')
+                ->content(function ($record) {
+                    if (!$record || !$record->product || !$record->product->image) {
+                        return 'No Image';
+                    }
+
+                    return new \Illuminate\Support\HtmlString(
+                        '<img src="' . asset('storage/' . $record->product->image) . '" 
+                        style="width:50px;height:50px;border-radius:8px;object-fit:cover;" />'
+                    );
+                }),
+
+            Forms\Components\Select::make('product_id')
+                ->relationship('product', 'name')
+                ->label('Product')
+                ->disabled(),
+
+            Forms\Components\TextInput::make('quantity')
+                ->numeric()
+                ->disabled(),
+
+            Forms\Components\TextInput::make('price')
+                ->label('Unit Price')
+                ->numeric()
+                ->prefix('$')
+                ->readOnly()
+                ->dehydrated()
+                ->afterStateHydrated(function ($component, $state, $record) {
+                    if ($record) {
+                        $component->state($record->price);
+                    }
+                }),
+        ])
+        ->columns(4)
+        ->addable(false)
+        ->deletable(false)
+        ->reorderable(false),
                             ]),
+    //                          Forms\Components\Section::make('Shipping Details')
+    // ->schema([
+    //     Forms\Components\TextInput::make('address.address_line_1')
+    //         ->label('Street Address')
+    //         ->disabled(), 
+
+    //     Forms\Components\TextInput::make('address.city')
+    //         ->label('City')
+    //         ->disabled(),
+
+    //     Forms\Components\TextInput::make('address.state')
+    //         ->label('State')
+    //         ->disabled(),
+
+    //     Forms\Components\TextInput::make('address.postal_code')
+    //         ->label('Zip Code')
+    //         ->disabled(),
+
+    //     Forms\Components\TextInput::make('address.country')
+    //         ->label('Country')
+    //         ->placeholder('N/A')
+    //         ->disabled(),
+            
+    //     Forms\Components\Toggle::make('address.is_default')
+    //         ->label('Customer Default Address')
+    //         ->disabled(),
+    // ])
+    // ->columns(2)
+    // ->visible(fn ($record) => $record && $record->address_id)
                         ])
+                        
                         ->columnSpan(['lg' => 2]),
 
                     // RIGHT SIDE: Workflow and Totals (Spans 1 column)
@@ -181,11 +289,29 @@ class OrderResource extends Resource
 
                             // Pricing
                             Forms\Components\Section::make('Pricing Summary')->schema([
-                                Forms\Components\TextInput::make('total_amount')
-                                    ->label('Grand Total')
-                                    ->numeric()
-                                    ->readOnly()
-                                    ->prefix('$'),
+                                // Forms\Components\TextInput::make('total_amount')
+                                //     ->label('Grand Total')
+                                //     ->numeric()
+                                //     ->readOnly()
+                                //     ->prefix('$'),
+
+                                // Find this inside the Pricing Summary Section in form()
+Forms\Components\TextInput::make('total_amount')
+    ->label(fn() => auth()->user()->role === 'seller' ? 'Your Order Value' : 'Grand Total')
+    ->numeric()
+    ->readOnly()
+    ->prefix('$')
+    ->afterStateHydrated(function ($component, $record) {
+        // If it's a seller, we override the $1,795.00 with their specific $1,342.00
+        if ($record && auth()->user()->role === 'seller') {
+            $sellerShare = $record->items()
+                ->whereHas('product', fn($q) => $q->where('tenant_id', auth()->user()->tenant_id))
+                ->get()
+                ->sum(fn($item) => $item->price * $item->quantity);
+            
+            $component->state($sellerShare);
+        }
+    }),
 
                                 Forms\Components\Placeholder::make('seller_total')
                                     ->label('Your Earnings')
@@ -225,10 +351,47 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('payment_status')->badge(),
                 Tables\Columns\TextColumn::make('shipment_status')->badge(),
 
-                Tables\Columns\TextColumn::make('total_amount')->money('USD'),
+                // Tables\Columns\TextColumn::make('total_amount')->money('USD'),
+              Tables\Columns\TextColumn::make('total_amount')
+    ->label(fn() => in_array(auth()->user()->role, ['manager', 'seller']) ? 'Managed Total' : 'Total Amount')
+    ->money('USD')
+    ->getStateUsing(function ($record) {
+        $user = auth()->user();
+
+        // 1. Manager Logic: Sum items belonging to tenants managed by this user
+        if ($user->role === 'manager') {
+            return $record->items()
+                ->whereHas('product', function ($q) use ($user) {
+                    $q->whereIn('tenant_id', function ($sub) use ($user) {
+                        $sub->select('tenant_id')
+                            ->from('users')
+                            ->where('manager_id', $user->id)
+                            ->orWhere('id', $user->id); // Include manager's own items if they sell
+                    });
+                })
+                ->get()
+                ->sum(fn($item) => $item->price * $item->quantity);
+        }
+
+        // 2. Seller Logic: Sum only items for their specific tenant
+        if ($user->role === 'seller') {
+            return $record->items()
+                ->whereHas('product', fn($q) => $q->where('tenant_id', $user->tenant_id))
+                ->get()
+                ->sum(fn($item) => $item->price * $item->quantity);
+        }
+
+        // 3. Admin Logic: Return the absolute order total
+        return $record->total_amount;
+    }),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime('M d, Y'),
+
+    //             Tables\Columns\TextColumn::make('address.address_line_1')
+    // ->label('Shipping To')
+    // ->description(fn ($record) => $record->address ? $record->address->city : '')
+    // ->searchable(),
             ])
 
             ->filters([
@@ -316,11 +479,13 @@ class OrderResource extends Resource
 //     return $query->whereRaw('1 = 0');
 // }
 
+
+
 public static function getEloquentQuery(): Builder
 {
     // 1. Start the query with necessary relationships
     $query = parent::getEloquentQuery()
-        ->with(['user', 'items.product']);
+        ->with(['user', 'items.product','address']);
 
     if (!auth()->check()) {
         return $query->whereRaw('1 = 0');
@@ -374,6 +539,120 @@ public static function getEloquentQuery(): Builder
     {
         return false;
     }
+
+    // public static function infolist(Infolist $infolist): Infolist
+    // {
+    //     return $infolist
+    //         ->schema([
+    //             Components\Section::make('Shipping Address Information')
+    //                 ->schema([
+    //                     Components\TextEntry::make('address.address_line_1')
+    //                         ->label('Address'),
+    //                     Components\TextEntry::make('address.city')
+    //                         ->label('City'),
+    //                     Components\TextEntry::make('address.state')
+    //                         ->label('State'),
+    //                     Components\TextEntry::make('address.postal_code')
+    //                         ->label('Postal Code'),
+    //                 ])
+    //                 ->columns(2),
+    //         ]);
+    // }
+   public static function infolist(Infolist $infolist): Infolist
+{
+    return $infolist
+        ->schema([
+            // --- SECTION 1: Address Info ---
+            Components\Section::make('Shipping Address Information')
+                ->schema([
+                    Components\TextEntry::make('address.address_line_1')->label('Address'),
+                    Components\TextEntry::make('address.city')->label('City'),
+                    Components\TextEntry::make('address.state')->label('State'),
+                    Components\TextEntry::make('address.postal_code')->label('Postal Code'),
+                ])
+                ->columns(2),
+
+            // --- SECTION 2: Order Items ---
+            Components\Section::make('Order Items')
+                ->schema([
+                    Components\RepeatableEntry::make('items')
+                        ->schema([
+                            Components\ImageEntry::make('product.image')
+                                ->label('Image')
+                                ->circular(),
+                            Components\TextEntry::make('product.name')
+                                ->label('Product'),
+                            Components\TextEntry::make('quantity')
+                                ->label('Qty'),
+                            Components\TextEntry::make('price')
+                                ->label('Unit Price')
+                                ->money('USD'),
+                        ])
+                        ->columns(4)
+                        ->getStateUsing(function ($record) {
+                            $user = auth()->user();
+
+                            // Logic for Manager: Filter by the tenants they manage
+                            if ($user->role === 'manager') {
+                                return $record->items()
+                                    ->whereHas('product', function ($q) use ($user) {
+                                        $q->whereIn('tenant_id', function ($sub) use ($user) {
+                                            $sub->select('tenant_id')
+                                                ->from('users')
+                                                ->where('manager_id', $user->id)
+                                                ->orWhere('id', $user->id);
+                                        });
+                                    })
+                                    ->get();
+                            }
+
+                            // Logic for Seller
+                            if ($user->role === 'seller') {
+                                return $record->items()
+                                    ->whereHas('product', fn($q) => $q->where('tenant_id', $user->tenant_id))
+                                    ->get();
+                            }
+
+                            return $record->items;
+                        }),
+                ]),
+
+            // --- SECTION 3: Pricing Summary ---
+            Components\Section::make('Pricing Summary')
+                ->schema([
+                    Components\TextEntry::make('total_amount')
+                        ->label(fn() => in_array(auth()->user()->role, ['manager', 'seller']) ? 'Managed Order Value' : 'Grand Total')
+                        ->money('USD')
+                        ->getStateUsing(function ($record) {
+                            $user = auth()->user();
+
+                            if ($user->role === 'manager') {
+                                return $record->items()
+                                    ->whereHas('product', function ($q) use ($user) {
+                                        $q->whereIn('tenant_id', function ($sub) use ($user) {
+                                            $sub->select('tenant_id')
+                                                ->from('users')
+                                                ->where('manager_id', $user->id)
+                                                ->orWhere('id', $user->id);
+                                        });
+                                    })
+                                    ->get()
+                                    ->sum(fn($item) => $item->price * $item->quantity);
+                            }
+
+                            if ($user->role === 'seller') {
+                                return $record->items()
+                                    ->whereHas('product', fn($q) => $q->where('tenant_id', $user->tenant_id))
+                                    ->get()
+                                    ->sum(fn($item) => $item->price * $item->quantity);
+                            }
+
+                            return $record->total_amount;
+                        }),
+                ])
+        ]);
+}
+    
 
     public static function getPages(): array
     {
