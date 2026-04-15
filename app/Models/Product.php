@@ -114,6 +114,10 @@ public function reviews(): \Illuminate\Database\Eloquent\Relations\HasMany
                              });
                 });
             }
+
+            if ($user->role === 'customer') {
+        return;
+    }
         });
 
         /**

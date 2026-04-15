@@ -284,12 +284,17 @@ class ProductResource extends Resource
         return $table->columns([
             TextColumn::make('row_index')->label('#')->rowIndex(),
 
+            // ImageColumn::make('image')
+            //     ->label('Thumbnail')
+            //     ->circular()
+            //     ->disk('public')
+            //     ->visibility('public')
+            //     ->checkFileExistence(false),
             ImageColumn::make('image')
-                ->label('Thumbnail')
-                ->circular()
-                ->disk('public')
-                ->visibility('public')
-                ->checkFileExistence(false),
+    ->label('Thumbnail')
+    ->circular()
+    ->getStateUsing(fn ($record) => asset('storage/' . $record->image))
+    ->checkFileExistence(false),
 
             TextColumn::make('name')->searchable(),
 

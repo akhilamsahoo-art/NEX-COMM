@@ -46,11 +46,12 @@ class Kernel extends HttpKernel
         //     'throttle:api',
         //     \Illuminate\Routing\Middleware\SubstituteBindings::class,
         // ],
-        'api' => [
-    // \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-    'throttle:api',
-    \Illuminate\Routing\Middleware\SubstituteBindings::class,
-],
+   'api' => [
+        // This is crucial for Next.js (SPA) cookie auth
+        \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+        'throttle:60,1',
+        \Illuminate\Routing\Middleware\SubstituteBindings::class,
+    ],
     ];
 
     /**

@@ -46,7 +46,8 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Product::query();
+        // $query = Product::query();
+        $query = Product::withoutGlobalScopes();
 
         if ($request->has('search')) {
             $query->where('name', 'like', '%' . $request->search . '%');
