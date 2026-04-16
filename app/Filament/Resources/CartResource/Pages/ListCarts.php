@@ -16,4 +16,10 @@ class ListCarts extends ListRecords
             Actions\CreateAction::make(),
         ];
     }
+
+    // 🔥 THIS forces real refresh
+    protected function getPollingInterval(): ?string
+    {
+        return '3s';
+    }
 }

@@ -151,4 +151,14 @@ public function reviews(): \Illuminate\Database\Eloquent\Relations\HasMany
             }
         });
     }
+
+   public function getImageAttribute($value)
+{
+    if (!$value) return null;
+
+    // remove 'storage/' if already present
+    $value = str_replace('storage/', '', $value);
+
+    return url('storage/' . $value);
+}
 }

@@ -293,7 +293,8 @@ class ProductResource extends Resource
             ImageColumn::make('image')
     ->label('Thumbnail')
     ->circular()
-    ->getStateUsing(fn ($record) => asset('storage/' . $record->image))
+    // ->getStateUsing(fn ($record) => asset('storage/' . $record->image))
+    ->getStateUsing(fn ($record) => $record->image)
     ->checkFileExistence(false),
 
             TextColumn::make('name')->searchable(),

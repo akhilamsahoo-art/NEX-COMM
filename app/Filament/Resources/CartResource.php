@@ -41,16 +41,45 @@ class CartResource extends Resource
                     ->sortable(),
 
                 // 📦 Total Items
-                Tables\Columns\TextColumn::make('items_count')
-                    ->counts('items')
-                    ->label('Items'),
+                // Tables\Columns\TextColumn::make('items_count')
+                //     ->counts('items')
+                //     ->label('Items'),
+
+                Tables\Columns\TextColumn::make('items_total')
+    ->getStateUsing(function ($record) {
+
+        $total = \Illuminate\Support\Facades\DB::table('cart_items')
+            ->where('cart_id', $record->id)
+            ->sum('quantity');
+
+        \Illuminate\Support\Facades\Log::info('Filament Data', [
+            'cart_id' => $record->id,
+            'total' => $total
+        ]);
+
+        return $total;
+    }),
 
                 // 💰 Total Price (requires accessor in model)
-                Tables\Columns\TextColumn::make('total')
-                    ->label('Total')
-                    ->prefix('$')
-                    ->sortable(),
+                // Tables\Columns\TextColumn::make('total')
+                //     ->label('Total')
+                //     ->prefix('$')
+                //     ->sortable(),
 
+                Tables\Columns\TextColumn::make('total_calc')
+    ->label('Total')
+    ->prefix('$')
+    ->getStateUsing(function ($record) {
+        return (float) \Illuminate\Support\Facades\DB::table('cart_items')
+            ->join('products', 'cart_items.product_id', '=', 'products.id')
+            ->where('cart_items.cart_id', $record->id)
+            ->sum(
+                \Illuminate\Support\Facades\DB::raw('cart_items.quantity * products.price')
+            );
+    }),
+
+
+     
                 // 🕒 Created Time
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Created')
@@ -78,6 +107,7 @@ class CartResource extends Resource
     ]),
 
             ])
+            ->poll('3s')
 
             // ->filters([
 

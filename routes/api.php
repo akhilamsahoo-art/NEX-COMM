@@ -51,8 +51,10 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/cart', [CartController::class, 'index']);
     Route::post('/cart/add', [CartController::class, 'add']);
+    Route::put('/cart/update/{id}', [CartController::class, 'update']); 
     Route::delete('/cart/remove/{id}', [CartController::class, 'remove']);
     Route::post('/cart/clear', [CartController::class, 'clear']);
+    Route::get('/cart/count', [CartController::class, 'count']);
     Route::get('/orders', [OrderController::class, 'index']);
 });
 
@@ -74,17 +76,17 @@ Route::middleware(['auth:sanctum', 'role:seller'])->group(function () {
 });
 
 // ================= CUSTOMER ROUTES =================
-Route::middleware(['auth:sanctum', 'role:customer'])->group(function () {
+// Route::middleware(['auth:sanctum', 'role:customer'])->group(function () {
 
-    Route::get('/cart', [CartController::class, 'index']);
-    Route::post('/cart', [CartController::class, 'add']);
-    Route::delete('/cart/{id}', [CartController::class, 'remove']);
-    Route::delete('/cart', [CartController::class, 'clear']);
-    Route::post('/checkout', [OrderController::class, 'checkout']);
-    Route::get('/orders', [OrderController::class, 'index']);
-    Route::post('/orders', [OrderController::class, 'store']);
-    Route::get('/orders/{id}', [OrderController::class, 'show']);
-});
+//     Route::get('/cart', [CartController::class, 'index']);
+//     Route::post('/cart', [CartController::class, 'add']);
+//     Route::delete('/cart/{id}', [CartController::class, 'remove']);
+//     Route::delete('/cart', [CartController::class, 'clear']);
+//     Route::post('/checkout', [OrderController::class, 'checkout']);
+//     Route::get('/orders', [OrderController::class, 'index']);
+//     Route::post('/orders', [OrderController::class, 'store']);
+//     Route::get('/orders/{id}', [OrderController::class, 'show']);
+// });
 
 // ================= ADMIN (MANAGER + SUPER ADMIN) =================
 Route::middleware(['auth:sanctum', 'role:super_admin,manager'])->group(function () {

@@ -157,33 +157,65 @@ if ($role === 'super_admin') {
     }
 
     // ✅ LOGIN
+    // public function login(Request $request)
+    // {
+    //     $request->validate([
+    //         'email' => 'required|email',
+    //         'password' => 'required'
+    //     ]);
+
+    //     $user = User::where('email', $request->email)->first();
+
+    //     if (!$user || !Hash::check($request->password, $user->password)) {
+    //         return ApiResponse::error('Invalid credentials', 401);
+    //     }
+
+    //     // 🔥 Check tenant active (important SaaS rule)
+    //     if ($user->tenant && !$user->tenant->is_active) {
+    //         return ApiResponse::error('Store is inactive', 403);
+    //     }
+
+    //     $token = $user->createToken('api-token')->plainTextToken;
+
+    //     return ApiResponse::success([
+    //         'user' => $user,
+    //         'token' => $token,
+    //         'role' => $user->role,
+    //         'is_admin' => $user->is_admin,
+    //     ], 'Login successful');
+    // }
     public function login(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required'
-        ]);
+{
+    $request->validate([
+        'email' => 'required|email',
+        'password' => 'required'
+    ]);
 
-        $user = User::where('email', $request->email)->first();
+    $user = User::where('email', $request->email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return ApiResponse::error('Invalid credentials', 401);
-        }
-
-        // 🔥 Check tenant active (important SaaS rule)
-        if ($user->tenant && !$user->tenant->is_active) {
-            return ApiResponse::error('Store is inactive', 403);
-        }
-
-        $token = $user->createToken('api-token')->plainTextToken;
-
-        return ApiResponse::success([
-            'user' => $user,
-            'token' => $token,
-            'role' => $user->role,
-            'is_admin' => $user->is_admin,
-        ], 'Login successful');
+    if (!$user || !Hash::check($request->password, $user->password)) {
+        return ApiResponse::error('Invalid credentials', 401);
     }
+
+    // 🔥 BLOCK NON-CUSTOMERS (IMPORTANT)
+    if ($user->role !== 'customer') {
+        return ApiResponse::error('Only customers are allowed to login here', 403);
+    }
+
+    // 🔥 Check tenant active
+    if ($user->tenant && !$user->tenant->is_active) {
+        return ApiResponse::error('Store is inactive', 403);
+    }
+
+    $token = $user->createToken('api-token')->plainTextToken;
+
+    return ApiResponse::success([
+        'user' => $user,
+        'token' => $token,
+        'role' => $user->role,
+        'is_admin' => $user->is_admin,
+    ], 'Login successful');
+}
 
     // ✅ ADMIN LOGIN
     public function adminLogin(Request $request)
