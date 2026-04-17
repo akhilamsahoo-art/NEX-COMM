@@ -56,6 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/cart/clear', [CartController::class, 'clear']);
     Route::get('/cart/count', [CartController::class, 'count']);
     Route::get('/orders', [OrderController::class, 'index']);
+    Route::post('/checkout', [OrderController::class, 'checkout']);
 });
 
 // ================= PUBLIC (STORE FRONT READY) =================

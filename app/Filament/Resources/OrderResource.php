@@ -138,10 +138,15 @@ class OrderResource extends Resource
                         return 'No Image';
                     }
 
+                    // return new \Illuminate\Support\HtmlString(
+                    //     '<img src="' . asset('storage/' . $record->product->image) . '" 
+                    //     style="width:50px;height:50px;border-radius:8px;object-fit:cover;" />'
+                    // );
+
                     return new \Illuminate\Support\HtmlString(
-                        '<img src="' . asset('storage/' . $record->product->image) . '" 
-                        style="width:50px;height:50px;border-radius:8px;object-fit:cover;" />'
-                    );
+    '<img src="' . $record->product->image . '" 
+    style="width:50px;height:50px;border-radius:8px;object-fit:cover;" />'
+);
                 }),
 
             Forms\Components\Select::make('product_id')
